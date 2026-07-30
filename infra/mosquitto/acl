@@ -1,0 +1,30 @@
+# Una sede puede publicar SOLO su propio estado. No puede falsificar el de otra.
+# Puede invitar a cualquier sede y participar en los eventos de cualquier llamada.
+
+user totem-lorca
+topic write totem/lorca/estado
+topic read  totem/+/estado
+topic write totem/+/invitacion
+topic read  totem/lorca/invitacion
+topic readwrite llamada/+/evento
+topic read  config/sedes
+
+user totem-canarias
+topic write totem/canarias/estado
+topic read  totem/+/estado
+topic write totem/+/invitacion
+topic read  totem/canarias/invitacion
+topic readwrite llamada/+/evento
+topic read  config/sedes
+
+user totem-murcia
+topic write totem/murcia/estado
+topic read  totem/+/estado
+topic write totem/+/invitacion
+topic read  totem/murcia/invitacion
+topic readwrite llamada/+/evento
+topic read  config/sedes
+
+# Cuenta de operaciones: publica el directorio de sedes.
+user operaciones
+topic readwrite #

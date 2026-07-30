@@ -2,6 +2,7 @@
 info.md
 infra/mosquitto/passwd
 infra/vendor/
+apps/web/public/vendor/
 *.env
 .env.*
 
