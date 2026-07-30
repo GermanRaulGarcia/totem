@@ -178,6 +178,8 @@ Todos los mensajes son JSON UTF-8. Transporte WSS con TLS.
 Si en Murcia se va la luz o se corta la fibra, el broker detecta el socket muerto y **publica el `offline` por su cuenta**. Las demás sedes lo ven en segundos. Sin polling, sin heartbeats manuales, sin código de detección de caídas.
 
 > ⚠️ **Detalle crítico que se pasa por alto con frecuencia:** el mensaje de LWT debe publicarse con `retained: true`. Si no, no sobrescribe el `online: true` que quedó retenido y la sede aparece viva indefinidamente.
+>
+> ⚠️ **Y su hermano gemelo, detectado durante la implementación:** el LWT solo cubre las caídas bruscas. Ante una desconexión ordenada, el cliente envía un `DISCONNECT` limpio y **el broker descarta el Will** — por eso, al cerrar, el tótem tiene que publicar él mismo su `online: false` retenido. Si no, un apagado normal deja la sede marcada como viva y además desactiva el mecanismo que debería corregirlo.
 
 Gracias al flag *retained*, un tótem que arranca conoce el estado de todas las demás sedes en el primer milisegundo, sin preguntar a nadie.
 
@@ -267,7 +269,9 @@ inactivo ─invitación─► recibiendo ───┴──acepta──► en-ll
 1. **Un solo punto crea el iframe de Jitsi y un solo punto lo destruye:** las acciones de entrada y salida de `en-llamada`. En ningún otro lugar del código se toca Jitsi. Si el iframe solo puede nacer y morir en un sitio, no puede quedarse huérfano.
 
    Esto aplica **también a quien llama**: durante `llamando` no se carga Jitsi. El llamante entra a la sala al mismo tiempo que el primero que acepta, en la transición a `en-llamada`. Además de mantener el invariante, evita levantar una sesión de Jitsi para una llamada que nadie va a contestar.
-2. **`sin-conexión` es transversal.** Se entra desde cualquier estado y se sale al estado seguro. Nunca una pantalla negra sin explicación.
+2. **`sin-conexión` es transversal, con una excepción deliberada.** Se entra desde cualquier estado y se sale al estado seguro. Nunca una pantalla negra sin explicación.
+
+   **La excepción: `en-llamada` y `finalizando` no ceden ante una caída del broker.** Es la consecuencia directa del desacoplamiento de §3.2 — el vídeo viaja por Jitsi, así que una caída de MQTT no tiene por qué cortar la conversación. Si la máquina saliera de `en-llamada`, además de cortar la llamada sin motivo dejaría el iframe huérfano, porque `destruir-jitsi` solo se emite al salir de `en-llamada` por la vía normal. Se pierde la presencia y nada más.
 3. **Una invitación durante `en-llamada` no provoca cambio de estado.** Es un aviso dentro de la llamada ("Canarias quiere unirse"). Esto evita que una llamada entrante tumbe una conversación en curso, que es exactamente lo que hace el código actual.
 4. Las transiciones no contempladas no existen. Ese es el objetivo completo.
 
@@ -338,7 +342,12 @@ Ordenado por urgencia real.
 
 Activar autenticación JWT: el VPS firma un token de vida corta por llamada y Jitsi solo admite la entrada con token válido.
 
-**Mitigación provisional** si el proveedor tarda: nombres de sala con UUID aleatorio y efímero (122 bits de entropía, ventana de minutos). Es aceptable como parche, pero **no es la solución**: no deja de ser seguridad por oscuridad.
+**Mitigación provisional** si el proveedor tarda: nombres de sala con UUID aleatorio de 122 bits. Es aceptable como parche, pero **no es la solución**: no deja de ser seguridad por oscuridad.
+
+Ojo a la diferencia entre los dos sistemas, porque conviven en el repositorio:
+
+- En el **sistema nuevo**, la sala es efímera de verdad: se genera una por llamada y muere al colgar.
+- En el **parche de fase 0** (`files/index.html`), la sala es un UUID **permanente y hardcodeado**. No puede ser de otra forma: es una línea abierta 24/7 y todos los tótems tienen que coincidir en el nombre. Quien lea ese fichero no debe suponer que rota.
 
 ### 8.2 MQTT
 
@@ -346,7 +355,11 @@ TLS obligatorio, credencial por sede y ACLs según la tabla de §4.6. Nunca una 
 
 ### 8.3 Credenciales en el repositorio
 
-`info.md` contiene IDs y contraseñas de AnyDesk en texto plano. Hay que sacarlo del repositorio, añadirlo a `.gitignore` y **rotar esas contraseñas**: han estado en claro en disco, lo prudente es darlas por comprometidas.
+`info.md` contiene IDs y contraseñas de AnyDesk en texto plano.
+
+Comprobado con `git log --all -- info.md`: **nunca llegó a commitearse**. El árbol base solo contenía `README.md`. Es decir, no hay que reescribir historia ni pasar `git filter-repo` — basta con el `.gitignore`, que ya está.
+
+Aun así conviene **rotar esas contraseñas**: han estado en claro en disco dentro de un directorio de trabajo compartido.
 
 ### 8.4 Permisos de cámara y micrófono en el kiosco
 
