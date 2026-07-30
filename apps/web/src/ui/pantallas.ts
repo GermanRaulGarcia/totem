@@ -12,12 +12,26 @@ function claseSede(s: EstadoSede): string {
     return s.disponibilidad === 'ocupado' ? 'sede sede--ocupada' : 'sede sede--libre';
 }
 
+// `EstadoSede.nombre` y `Contexto.origen` llegan por MQTT (topic retenido
+// config/sedes y payloads de invitacion publicados por otros totems): son
+// texto de red sin validar, no constantes del propio codigo. Sin escapar,
+// una sede con credenciales validas podria inyectar HTML/JS en la pantalla
+// de todos los demas totems, que son kiosks desatendidos con permisos de
+// camara y microfono ya concedidos.
+function escapar(texto: string): string {
+    return texto
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 function tarjetas(v: Vista, seleccionable: boolean): string {
     return v.sedes.map(s => `
-        <button class="${claseSede(s)}" data-sede="${s.sede}"
+        <button class="${claseSede(s)}" data-sede="${escapar(s.sede)}"
                 ${seleccionable && s.online ? '' : 'disabled'}
                 ${v.seleccion.includes(s.sede) ? 'data-elegida="si"' : ''}>
-            <span class="sede__nombre">${s.nombre}</span>
+            <span class="sede__nombre">${escapar(s.nombre)}</span>
             <span class="sede__estado">${s.online
                 ? (s.disponibilidad === 'ocupado' ? 'En llamada' : 'Disponible')
                 : 'Sin conexion'}</span>
@@ -89,7 +103,7 @@ export function render(raiz: HTMLElement, v: Vista): void {
             raiz.innerHTML = `
                 <section class="pantalla pantalla--entrante">
                     <p class="pulso"></p>
-                    <h1 class="titulo">${v.contexto.origen ?? 'Sede desconocida'}</h1>
+                    <h1 class="titulo">${escapar(v.contexto.origen ?? 'Sede desconocida')}</h1>
                     <p class="mensaje">te esta llamando</p>
                     <nav class="acciones">
                         <button data-accion="rechazar" class="boton boton--colgar">Rechazar</button>

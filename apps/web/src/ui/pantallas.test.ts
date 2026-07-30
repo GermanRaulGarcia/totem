@@ -66,10 +66,25 @@ describe('pantallas', () => {
         expect(raiz.textContent).toContain('Sin conexion');
     });
 
+    it('en llamando muestra el titulo y el boton de cancelar', () => {
+        render(raiz, vista({ contexto: contextoEn('llamando') }));
+        expect(raiz.textContent).toContain('Llamando...');
+        expect(raiz.querySelector('[data-accion="cancelar"]')).not.toBeNull();
+    });
+
     it('en en-llamada no pinta el contenedor de video dos veces', () => {
         const ctx = contextoEn('en-llamada');
         render(raiz, vista({ contexto: ctx }));
         render(raiz, vista({ contexto: ctx }));
         expect(raiz.querySelectorAll('#jitsi')).toHaveLength(1);
+        expect(raiz.querySelector('[data-accion="colgar"]')).not.toBeNull();
+    });
+
+    it('escapa el nombre de sede antes de insertarlo en el DOM', () => {
+        const maliciosa = sede('lorca', true);
+        maliciosa.nombre = '<img src=x onerror=alert(1)>';
+        render(raiz, vista({ sedes: [maliciosa] }));
+        expect(raiz.querySelector('img')).toBeNull();
+        expect(raiz.textContent).toContain('<img src=x onerror=alert(1)>');
     });
 });
