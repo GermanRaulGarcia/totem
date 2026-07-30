@@ -1,3 +1,5 @@
+# SUSTITUIR por el dominio real antes de desplegar. Con el placeholder,
+# el ACME de Caddy para HTTPS automático fallará: no controlas ese dominio.
 totem.sunube.net {
     encode gzip
 

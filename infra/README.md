@@ -2,7 +2,12 @@
 
 ## Primer despliegue
 
-1. Generar las contraseñas de cada sede:
+1. Sustituir el dominio de ejemplo en `infra/Caddyfile`
+   (`totem.sunube.net`) por el dominio real del VPS. Si se deja el
+   placeholder, el HTTPS automático de Caddy falla al pedir el
+   certificado: el proveedor de ACME rechaza un dominio que no controlas.
+
+2. Generar las contraseñas de cada sede:
 
 ```bash
 cd infra
@@ -19,14 +24,14 @@ docker run --rm -v "$PWD/mosquitto:/m" eclipse-mosquitto:2 \
 
 `mosquitto/passwd` NO se versiona. Añádelo a `.gitignore`.
 
-2. Descargar `external_api.js` para autoalojarlo:
+3. Descargar `external_api.js` para autoalojarlo:
 
 ```bash
 mkdir -p vendor
 curl -o vendor/external_api.js https://meet.sunube.net/external_api.js
 ```
 
-3. Construir la web y levantar:
+4. Construir la web y levantar:
 
 ```bash
 cd ../apps/web && npm ci && npm run build
@@ -51,17 +56,21 @@ curl -o apps/web/public/vendor/external_api.js https://meet.sunube.net/external_
 
 Se hace una vez, y otra vez cada vez que se añade una sede.
 El flag `-r` es obligatorio: sin retención, un tótem que arranque no lo recibirá.
+Todo payload MQTT lleva `ts` en ISO 8601; se genera con `date` en el momento
+de publicar, no se escribe a mano, para que nadie publique una marca de
+tiempo obsoleta.
 
 ```bash
 docker compose exec mosquitto mosquitto_pub -h localhost \
     -u operaciones -P CONTRASENA_OPERACIONES \
-    -t config/sedes -r -q 1 -m '{
-      "sedes": [
-        {"id":"lorca","nombre":"Lorca","orden":1},
-        {"id":"canarias","nombre":"Gran Canaria","orden":2},
-        {"id":"murcia","nombre":"Murcia","orden":3}
+    -t config/sedes -r -q 1 -m "{
+      \"ts\": \"$(date -u +%FT%TZ)\",
+      \"sedes\": [
+        {\"id\":\"lorca\",\"nombre\":\"Lorca\",\"orden\":1},
+        {\"id\":\"canarias\",\"nombre\":\"Gran Canaria\",\"orden\":2},
+        {\"id\":\"murcia\",\"nombre\":\"Murcia\",\"orden\":3}
       ]
-    }'
+    }"
 ```
 
 ## Comprobar la presencia en vivo
