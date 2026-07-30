@@ -118,3 +118,84 @@ describe('maquina de estados: llamada saliente', () => {
         expect(r.efectos).toContainEqual({ tipo: 'parar-ringback' });
     });
 });
+
+import type { Invitacion } from './tipos';
+
+const invitacionDe = (origen: string): Invitacion => ({
+    callId: 'call-1',
+    sala: 'spm-call-1',
+    origen,
+    invitados: ['lorca'],
+    ts: '2026-07-30T10:00:00Z'
+});
+
+describe('maquina de estados: llamada entrante', () => {
+    it('una invitacion estando inactivo pasa a recibiendo', () => {
+        const r = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        });
+        expect(r.contexto.estado).toBe('recibiendo');
+        expect(r.contexto.origen).toBe('murcia');
+    });
+
+    it('suena el timbre al recibir', () => {
+        const r = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        });
+        expect(r.efectos).toContainEqual({ tipo: 'sonar-timbre' });
+    });
+
+    it('NO crea el iframe mientras suena', () => {
+        const r = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        });
+        expect(r.efectos.some(e => e.tipo === 'crear-jitsi')).toBe(false);
+    });
+
+    it('aceptar crea el iframe y publica la aceptacion', () => {
+        const rec = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        }).contexto;
+        const r = transicion(rec, { tipo: 'aceptar' });
+        expect(r.contexto.estado).toBe('en-llamada');
+        expect(r.efectos).toContainEqual({ tipo: 'crear-jitsi', sala: 'spm-call-1' });
+        expect(r.efectos).toContainEqual({
+            tipo: 'publicar-evento-llamada', callId: 'call-1', evento: 'acepta'
+        });
+        expect(r.efectos).toContainEqual({ tipo: 'parar-timbre' });
+    });
+
+    it('rechazar vuelve a inactivo y lo publica', () => {
+        const rec = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        }).contexto;
+        const r = transicion(rec, { tipo: 'rechazar' });
+        expect(r.contexto.estado).toBe('inactivo');
+        expect(r.efectos).toContainEqual({
+            tipo: 'publicar-evento-llamada', callId: 'call-1', evento: 'rechaza'
+        });
+    });
+
+    it('sin respuesta registra la llamada perdida', () => {
+        const rec = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        }).contexto;
+        const r = transicion(rec, { tipo: 'sin-respuesta' });
+        expect(r.contexto.estado).toBe('inactivo');
+        expect(r.efectos).toContainEqual({ tipo: 'registrar-perdida', origen: 'murcia' });
+    });
+
+    it('una invitacion durante en-llamada NO cambia de estado', () => {
+        const rec = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        }).contexto;
+        const enLlamada = transicion(rec, { tipo: 'aceptar' }).contexto;
+        const r = transicion(enLlamada, {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('canarias')
+        });
+        expect(r.contexto.estado).toBe('en-llamada');
+        expect(r.contexto.callId).toBe('call-1');
+        expect(r.efectos.some(e => e.tipo === 'crear-jitsi')).toBe(false);
+        expect(r.efectos.some(e => e.tipo === 'destruir-jitsi')).toBe(false);
+    });
+});

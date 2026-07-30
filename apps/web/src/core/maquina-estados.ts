@@ -69,6 +69,16 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
                     efectos: [{ tipo: 'arrancar-timer', nombre: 'seleccion', ms: MS_TIMEOUT_SELECCION }]
                 };
             }
+            if (evento.tipo === 'invitacion-recibida') {
+                const { callId, sala, origen } = evento.invitacion;
+                return {
+                    contexto: { ...ctx, estado: 'recibiendo', callId, sala, origen },
+                    efectos: [
+                        { tipo: 'sonar-timbre' },
+                        { tipo: 'arrancar-timer', nombre: 'sin-respuesta', ms: MS_TIMEOUT_SIN_RESPUESTA }
+                    ]
+                };
+            }
             return sinCambios(ctx);
 
         case 'seleccionando': {
@@ -115,6 +125,38 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
                     { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
                     { tipo: 'parar-ringback' },
                     { tipo: 'publicar-evento-llamada', callId: ctx.callId!, evento: 'cuelga' }
+                ]);
+            }
+            return sinCambios(ctx);
+        }
+
+        case 'recibiendo': {
+            const comunes: Efecto[] = [
+                { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
+                { tipo: 'parar-timbre' }
+            ];
+            if (evento.tipo === 'aceptar') {
+                return {
+                    contexto: { ...ctx, estado: 'en-llamada', aceptadas: [ctx.origen!] },
+                    efectos: [
+                        ...comunes,
+                        { tipo: 'publicar-evento-llamada', callId: ctx.callId!, evento: 'acepta' },
+                        { tipo: 'publicar-estado', disponibilidad: 'ocupado', callId: ctx.callId },
+                        { tipo: 'crear-jitsi', sala: ctx.sala! }
+                    ]
+                };
+            }
+            if (evento.tipo === 'rechazar') {
+                return irAInactivo(ctx, [
+                    ...comunes,
+                    { tipo: 'publicar-evento-llamada', callId: ctx.callId!, evento: 'rechaza' }
+                ]);
+            }
+            if (evento.tipo === 'sin-respuesta') {
+                return irAInactivo(ctx, [
+                    ...comunes,
+                    { tipo: 'publicar-evento-llamada', callId: ctx.callId!, evento: 'sin-respuesta' },
+                    { tipo: 'registrar-perdida', origen: ctx.origen! }
                 ]);
             }
             return sinCambios(ctx);
