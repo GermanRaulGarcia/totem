@@ -34,8 +34,14 @@ export class SesionJitsi {
     crear(sala: string): void {
         // Defensa: si por lo que sea quedaba una sesion, se cierra antes de abrir otra.
         this.destruir();
-        this.api = this.fabrica(sala, this.contenedor, this.displayName);
-        this.api.addEventListener('videoConferenceLeft', () => this.cbFallo());
+        const nuevaApi = this.fabrica(sala, this.contenedor, this.displayName);
+        this.api = nuevaApi;
+        // Guardia de identidad: solo dispara el callback si esta api sigue siendo la actual.
+        // Esto previene que un listener stale de una sesion anterior (o que se está destruyendo)
+        // atribuya falsamente un fallo a la sesion activa ahora.
+        nuevaApi.addEventListener('videoConferenceLeft', () => {
+            if (this.api === nuevaApi) this.cbFallo();
+        });
     }
 
     destruir(): void {
