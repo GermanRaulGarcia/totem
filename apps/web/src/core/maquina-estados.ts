@@ -52,7 +52,16 @@ function irAInactivo(ctx: Contexto, efectosPrevios: Efecto[] = []): Resultado {
 }
 
 export function transicion(ctx: Contexto, evento: Evento): Resultado {
-    if (evento.tipo === 'broker-desconectado' && ctx.estado !== 'sin-conexion') {
+    // Excepcion deliberada: durante 'en-llamada' o 'finalizando' NO se corta a sin-conexion
+    // al caer el broker. Principio de desacoplamiento (diseno §3.2): la senalizacion viaja
+    // por MQTT pero el medio viaja por Jitsi, asi que perder el broker solo pierde presencia,
+    // nunca la llamada activa. No "simplificar" quitando esta guarda.
+    if (
+        evento.tipo === 'broker-desconectado' &&
+        ctx.estado !== 'sin-conexion' &&
+        ctx.estado !== 'en-llamada' &&
+        ctx.estado !== 'finalizando'
+    ) {
         return { contexto: { ...ctx, estado: 'sin-conexion' }, efectos: [] };
     }
 

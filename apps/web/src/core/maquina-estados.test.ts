@@ -268,3 +268,53 @@ describe('maquina de estados: colgar y el invariante del iframe', () => {
         expect(ctx.estado).toBe('inactivo');
     });
 });
+
+describe('maquina de estados: desacoplamiento de senalizacion y medio', () => {
+    const llegarAEnLlamada = () => {
+        const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] }).contexto;
+        return transicion(llamando, { tipo: 'sede-acepto', sede: 'murcia' }).contexto;
+    };
+
+    it('un broker caido durante en-llamada NO corta la llamada activa', () => {
+        const r = transicion(llegarAEnLlamada(), { tipo: 'broker-desconectado' });
+        expect(r.contexto.estado).toBe('en-llamada');
+        expect(r.efectos).toEqual([]);
+    });
+
+    it('tras un broker caido en plena llamada, colgar sigue destruyendo el iframe exactamente una vez', () => {
+        const caido = transicion(llegarAEnLlamada(), { tipo: 'broker-desconectado' }).contexto;
+        const r = transicion(caido, { tipo: 'colgar' });
+        expect(r.contexto.estado).toBe('finalizando');
+        expect(r.efectos.filter(e => e.tipo === 'destruir-jitsi')).toHaveLength(1);
+    });
+
+    it('INVARIANTE: un corte de broker en plena llamada no rompe el emparejamiento crear/destruir', () => {
+        const secuencia: Evento[] = [
+            { tipo: 'broker-conectado' },
+            { tipo: 'toque-pantalla' },
+            { tipo: 'seleccion-confirmada', destinos: ['murcia'] },
+            { tipo: 'sede-acepto', sede: 'murcia' },
+            { tipo: 'broker-desconectado' },
+            { tipo: 'colgar' },
+            { tipo: 'teardown-completo' }
+        ];
+        let ctx = contextoInicial();
+        let creados = 0;
+        let destruidos = 0;
+        for (const ev of secuencia) {
+            const r = transicion(ctx, ev);
+            ctx = r.contexto;
+            creados += r.efectos.filter(e => e.tipo === 'crear-jitsi').length;
+            destruidos += r.efectos.filter(e => e.tipo === 'destruir-jitsi').length;
+        }
+        expect(creados).toBe(1);
+        expect(destruidos).toBe(1);
+        expect(ctx.estado).toBe('inactivo');
+    });
+
+    it('un broker caido estando inactivo si pasa a sin-conexion (sin regresion)', () => {
+        const r = transicion(contextoEn('inactivo'), { tipo: 'broker-desconectado' });
+        expect(r.contexto.estado).toBe('sin-conexion');
+    });
+});
