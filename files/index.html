@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Sunube Portal</title>
+    <script src="https://meet.sunube.net/external_api.js" defer></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        #jitsi {
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* LOGO PERSONALIZADO (Arriba Izquierda) */
+        .logo-sunube {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            z-index: 9999;
+            height: 100px;
+            /* <--- Súbelo a 100px o 120px para que destaque */
+            width: auto;
+            filter: drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.5));
+            /* Le da relieve sobre el vídeo */
+            pointer-events: none;
+        }
+
+        /* BOTÓN PEQUEÑO CIRCULAR (Abajo Derecha) */
+        .btn-llamada {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            z-index: 9999;
+            width: 70px;
+            height: 70px;
+            font-size: 30px;
+            background: #007bff;
+            color: white;
+            border: 2px solid white;
+            border-radius: 50%;
+            /* Lo hace redondo */
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .btn-llamada:active {
+            transform: scale(0.85);
+            background: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+
+    <img src="https://meet.sunube.net/images/logo.png" class="logo-sunube" alt="Logo">
+
+    <button class="btn-llamada" onclick="botonLlamar()">🔔</button>
+
+    <div id="jitsi"></div>
+
+    <audio id="audioTimbre" src="door-chime.mp3" preload="auto"></audio>
+
+    <script>
+        let api = null;
+        let timerSilencio = null;
+        const TIEMPO_LLAMADA = 5 * 60 * 1000;
+
+        // Estado real del microfono. null = todavia desconocido.
+        // La iframe API de Jitsi solo ofrece 'toggleAudio' (no existe 'muteAudio'), asi que
+        // hay que conocer el estado actual antes de alternar. Sin esto, cada pulsacion del
+        // timbre invertia el microfono en lugar de abrirlo.
+        let micSilenciado = null;
+
+        // Declara el estado deseado del microfono en vez de alternarlo a ciegas.
+        async function fijarMicSilenciado(silenciar) {
+            if (!api) return;
+            if (micSilenciado === null) {
+                micSilenciado = await api.isAudioMuted();
+            }
+            if (micSilenciado === silenciar) return; // Ya esta como queremos: no hacer nada.
+
+            // Actualizacion optimista para evitar un doble toggle si llegan dos ordenes
+            // seguidas antes de que Jitsi confirme. El evento posterior corrige si hiciera falta.
+            micSilenciado = silenciar;
+            api.executeCommand('toggleAudio');
+        }
+
+        window.onload = function () {
+            const urlParams = new URLSearchParams(window.location.search);
+            const idTotem = urlParams.get('id') || 'Tótem Sunube';
+
+            const options = {
+                // Sala no adivinable. Mitigacion temporal hasta activar JWT en el servidor
+                // Jitsi: la sala "a" era accesible por cualquiera que la escribiese en la URL.
+                // IMPORTANTE: este valor debe ser identico en todos los totems.
+                roomName: "spm-portal-027240a7-edc8-4270-b991-9f2b442879ec",
+                width: '100%', height: '100%',
+                parentNode: document.querySelector('#jitsi'),
+                configOverwrite: {
+                    startWithAudioMuted: true,
+                    prejoinPageEnabled: false,
+                    disableSelfView: false,
+                    enterTileView: true,
+                    p2p: { enabled: false },
+                    // Sin "settings" ni "hangup": en un panel accesible, colgar deja el totem
+                    // fuera de la sala sin forma de volver, y ajustes permite cambiar el
+                    // dispositivo de audio y dejarlo inservible.
+                    // Se define aqui y en interfaceConfigOverwrite porque las versiones
+                    // recientes de Jitsi leen esta clave y las antiguas la de abajo.
+                    toolbarButtons: ['microphone', 'camera', 'tileview']
+                },
+                interfaceConfigOverwrite: {
+                    SHOW_JITSI_WATERMARK: false, // Ocultamos el de Jitsi porque ya pusimos el nuestro arriba
+                    SHOW_WATERMARK_FOR_GUESTS: false,
+                    TILE_VIEW_MAX_COLUMNS: 1,
+                    TOOLBAR_BUTTONS: ['microphone', 'camera', 'tileview']
+                },
+                userInfo: { displayName: idTotem }
+            };
+
+            if (typeof JitsiMeetExternalAPI !== 'undefined') {
+                api = new JitsiMeetExternalAPI("meet.sunube.net", options);
+                configurarEventos();
+            } else {
+                setTimeout(window.onload, 2000);
+            }
+        };
+
+        function sonarTimbre() {
+            const audio = document.getElementById('audioTimbre');
+            audio.currentTime = 0;
+            audio.play().catch(e => console.error("Error audio:", e));
+        }
+
+        function activarPortal() {
+            if (!api) return;
+            fijarMicSilenciado(false); // Abrir el microfono. Idempotente.
+            api.executeCommand('setTileView', true);
+
+            if (timerSilencio) clearTimeout(timerSilencio);
+            timerSilencio = setTimeout(() => {
+                // Antes llamaba a 'muteAudio', que no existe en la iframe API: el cierre
+                // automatico nunca llegaba a ejecutarse y el microfono quedaba abierto.
+                fijarMicSilenciado(true);
+            }, TIEMPO_LLAMADA);
+        }
+
+        function botonLlamar() {
+            if (!api) return;
+            sonarTimbre();
+            activarPortal();
+            api.executeCommand('sendEndpointTextMessage', '', 'TIMBRE_ACTIVO');
+        }
+
+        function configurarEventos() {
+            // Mantiene sincronizado el estado real del microfono, lo cambie quien lo cambie
+            // (el timbre, el temporizador o el usuario desde la barra de Jitsi).
+            api.addEventListener('audioMuteStatusChanged', (evento) => {
+                micSilenciado = evento.muted;
+            });
+
+            api.on('endpointTextMessageReceived', (event) => {
+                // 'event.eventData.text' es la ruta documentada; las demas cubren las
+                // variantes que devuelven otras versiones del servidor.
+                const msg = event.eventData?.text
+                    || event.data?.eventData?.text
+                    || event.text
+                    || event.data?.text;
+                if (msg === 'TIMBRE_ACTIVO') {
+                    sonarTimbre();
+                    activarPortal();
+                }
+            });
+
+            api.addEventListener('videoConferenceJoined', async () => {
+                micSilenciado = await api.isAudioMuted();
+                fijarMicSilenciado(true);
+                api.executeCommand('setTileView', true);
+            });
+        }
+    </script>
+</body>
+
+</html>

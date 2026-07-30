@@ -1,0 +1,20 @@
+# Credenciales y datos sensibles. NUNCA versionar.
+info.md
+infra/mosquitto/passwd
+infra/vendor/
+*.env
+.env.*
+
+# Dependencias y artefactos de build
+node_modules/
+dist/
+apps/web/dist/
+
+# Herramientas de desarrollo
+.superpowers/
+playwright-report/
+test-results/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
