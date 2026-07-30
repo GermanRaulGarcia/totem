@@ -170,8 +170,21 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
                     efectos: []
                 };
             }
+            if (evento.tipo === 'colgar' || evento.tipo === 'jitsi-fallo') {
+                return {
+                    contexto: { ...ctx, estado: 'finalizando' },
+                    efectos: [
+                        { tipo: 'destruir-jitsi' },
+                        { tipo: 'publicar-evento-llamada', callId: ctx.callId!, evento: 'cuelga' }
+                    ]
+                };
+            }
             return sinCambios(ctx);
         }
+
+        case 'finalizando':
+            if (evento.tipo === 'teardown-completo') return irAInactivo(ctx);
+            return sinCambios(ctx);
 
         default:
             return sinCambios(ctx);
