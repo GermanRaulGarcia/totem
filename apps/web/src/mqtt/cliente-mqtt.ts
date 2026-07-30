@@ -59,7 +59,7 @@ export class ClienteMqtt {
             reconnectPeriod: 1000,
             will: {
                 topic: topicEstado(this.op.sede),
-                payload: Buffer.from(this.cuerpoEstado(false, 'libre', null)),
+                payload: this.cuerpoEstado(false, 'libre', null),
                 qos: 1,
                 retain: true
             }

@@ -14,7 +14,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "buffer": "^6.0.3",
     "mqtt": "^5.15.2"
   },
   "devDependencies": {

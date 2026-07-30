@@ -1,14 +1,9 @@
-import { Buffer } from 'buffer';
 import { contextoInicial, transicion } from './core/maquina-estados';
 import type { Contexto, Evento, EstadoSede, NombreTimer } from './core/tipos';
 import { ClienteMqtt } from './mqtt/cliente-mqtt';
 import { SesionJitsi, type ApiJitsi } from './jitsi/sesion-jitsi';
 import { Interprete, type Sonidos, type Temporizadores } from './runtime/interprete';
 import { render } from './ui/pantallas';
-
-// cliente-mqtt.ts usa Buffer.from() (viene de mqtt.js, pensado tambien para Node).
-// El navegador no trae Buffer: hay que aportarlo antes de que se cree el cliente.
-(window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
 
 const params = new URLSearchParams(location.search);
 const SEDE = params.get('sede') ?? 'lorca';
