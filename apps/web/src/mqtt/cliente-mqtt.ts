@@ -126,7 +126,17 @@ export class ClienteMqtt {
         // mqtt.js queda en disconnecting=true para siempre y publicar rechaza con
         // "client disconnecting". No hay despedida posible: solo cerramos.
         if (!this.cliente.disconnecting) {
-            await this.publicarEstado('libre', null);
+            // Un DISCONNECT limpio (no forzado) hace que el broker DESCARTE el Will,
+            // por lo que el offline que normalmente pondria el LWT nunca llega. El
+            // cliente tiene que retractar su propia presencia con el mismo payload
+            // que usaria el Will (cuerpoEstado(false, ...)) antes de desconectarse;
+            // si publicaramos 'libre' con online:true, el estado retenido quedaria
+            // "vivo para siempre" pese a haberse ido de forma ordenada.
+            await this.cliente.publishAsync(
+                topicEstado(this.op.sede),
+                this.cuerpoEstado(false, 'libre', null),
+                { qos: 1, retain: true }
+            );
         }
         await this.cliente.endAsync();
         this.cliente = null;

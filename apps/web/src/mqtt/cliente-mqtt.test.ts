@@ -68,6 +68,23 @@ describe('ClienteMqtt', () => {
         expect(ultimo!.online).toBe(false);
     });
 
+    it('tras una desconexion limpia el estado retenido queda offline', async () => {
+        const lorca = nuevo('lorca', 'Lorca');
+        await lorca.conectar();
+
+        const recibidos: EstadoSede[] = [];
+        const canarias = nuevo('canarias', 'Gran Canaria');
+        canarias.alCambiarEstadoSede(e => recibidos.push(e));
+        await canarias.conectar();
+        await esperar(100);
+
+        await lorca.desconectar();
+        await esperar(150);
+
+        const ultimo = recibidos.filter(e => e.sede === 'lorca').at(-1);
+        expect(ultimo!.online).toBe(false);
+    });
+
     it('entrega una invitacion solo a su destinatario', async () => {
         const lorca = nuevo('lorca', 'Lorca');
         const murcia = nuevo('murcia', 'Murcia');
