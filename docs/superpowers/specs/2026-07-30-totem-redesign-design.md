@@ -129,6 +129,8 @@ Chrome mantiene una sesión WebRTC activa durante semanas sin cerrarse nunca. Ji
 
 **La señalización y el media son independientes.** Si el broker cae en mitad de una conversación, la llamada no se corta: el vídeo viaja por Jitsi. Solo se pierde la presencia, y la interfaz lo indica. Hoy, cualquier incidencia se lleva todo por delante.
 
+> ⚠️ **La cara oculta de este principio, detectada en revisión.** Si la llamada sobrevive a la caída del broker, el **reenganche tiene que republicar la disponibilidad verdadera**. La capa MQTT no puede publicar `libre` en cada CONNACK "porque acaba de conectar": eso deja el estado retenido mintiendo durante el resto de la conversación, y otra sede ve un tótem disponible que en realidad está hablando. La disponibilidad la decide la máquina de estados, que es la única que sabe si hay llamada en curso; la capa de transporte solo se suscribe y avisa. Ver §5.2, evento `broker-conectado`.
+
 ### 3.3 Ciclo de vida de Jitsi: el cambio que elimina los cuelgues
 
 | Estado del tótem | Qué hay corriendo |

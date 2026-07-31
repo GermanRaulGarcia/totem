@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import mqtt from 'mqtt';
 import { arrancarBroker, type BrokerDePrueba } from '../mqtt/broker-de-prueba';
 import { ClienteMqtt } from '../mqtt/cliente-mqtt';
-import { TOPIC_CONFIG_SEDES } from '../mqtt/topics';
+import { TOPIC_CONFIG_SEDES, topicEstado } from '../mqtt/topics';
 import { SesionJitsi, type ApiJitsi } from '../jitsi/sesion-jitsi';
 import { fijarGeneradorCallId } from '../core/maquina-estados';
-import type { NombreTimer } from '../core/tipos';
+import type { EstadoSede, NombreTimer } from '../core/tipos';
 import type { Sonidos, Temporizadores } from './interprete';
 import { Totem } from './totem';
 
@@ -26,6 +26,23 @@ async function hasta(condicion: () => boolean, ms = 8_000): Promise<void> {
         await esperar(20);
     }
     throw new Error('la condicion no se cumplio a tiempo');
+}
+
+/**
+ * Lee el estado retenido de una sede igual que lo leeria un totem que acabara de
+ * arrancar: se conecta de cero, se suscribe y se queda con lo que el broker le
+ * entrega. Es la vista que tiene el resto del sistema, no la interna.
+ */
+async function estadoRetenidoDe(url: string, sede: string): Promise<EstadoSede | null> {
+    const bruto = await mqtt.connectAsync(url);
+    const vistos: EstadoSede[] = [];
+    bruto.on('message', (_topic, payload) => {
+        vistos.push(JSON.parse(payload.toString()) as EstadoSede);
+    });
+    await bruto.subscribeAsync(topicEstado(sede), { qos: 1 });
+    await esperar(200);
+    await bruto.endAsync();
+    return vistos.at(-1) ?? null;
 }
 
 interface Registro {
@@ -226,6 +243,50 @@ describe('integracion: dos sedes contra un broker real', () => {
         lorca.totem.emitir({ tipo: 'toque-pantalla' });
         lorca.totem.emitir({ tipo: 'seleccion-confirmada', destinos: ['murcia'] });
         await hasta(() => murcia.totem.contexto.estado === 'recibiendo');
+    }, 40_000);
+
+    it('un parpadeo del broker en plena llamada no deja la presencia mintiendo "libre"', async () => {
+        const lorca = montar('lorca', 'Lorca', { } as HTMLElement);
+        const murcia = montar('murcia', 'Murcia', { } as HTMLElement);
+        lorca.totem.arrancar();
+        murcia.totem.arrancar();
+        await hasta(() => lorca.totem.contexto.estado === 'inactivo'
+            && murcia.totem.contexto.estado === 'inactivo');
+
+        lorca.totem.emitir({ tipo: 'toque-pantalla' });
+        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destinos: ['murcia'] });
+        await hasta(() => murcia.totem.contexto.estado === 'recibiendo');
+        murcia.totem.emitir({ tipo: 'aceptar' });
+        await hasta(() => lorca.totem.contexto.estado === 'en-llamada');
+        // Los dos se unen de verdad: cancela el temporizador de 15 s, que si no
+        // abortaria la llamada en mitad del reinicio del broker.
+        lorca.totem.emitir({ tipo: 'jitsi-unido' });
+        murcia.totem.emitir({ tipo: 'jitsi-unido' });
+
+        // El broker cae y vuelve. La llamada NO se corta (diseno §3.2)...
+        const { puerto, puertoWs } = broker;
+        await broker.parar();
+        await esperar(200);
+        expect(lorca.totem.contexto.estado).toBe('en-llamada');
+        broker = await arrancarBroker({ puerto, puertoWs });
+
+        // ...y en cuanto vuelve, quien lea el retenido tiene que ver OCUPADO.
+        // Antes el reenganche publicaba `('libre', null)` a ciegas en cada
+        // CONNACK y el retenido se quedaba asi el resto de la llamada: otra sede
+        // veia a Lorca disponible y la llamaba a 45 s de silencio.
+        let observado: EstadoSede | null = null;
+        const limite = Date.now() + 10_000;
+        while (Date.now() < limite) {
+            observado = await estadoRetenidoDe(broker.url, 'lorca');
+            if (observado?.disponibilidad === 'ocupado') break;
+            await esperar(200);
+        }
+
+        expect(lorca.totem.contexto.estado).toBe('en-llamada');
+        expect(observado).not.toBeNull();
+        expect(observado!.online).toBe(true);
+        expect(observado!.disponibilidad).toBe('ocupado');
+        expect(observado!.callId).toBe('call-1');
     }, 40_000);
 
     it('el directorio retenido hace visible una sede que nunca ha conectado', async () => {

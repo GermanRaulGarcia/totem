@@ -317,6 +317,31 @@ describe('maquina de estados: desacoplamiento de senalizacion y medio', () => {
         const r = transicion(contextoEn('inactivo'), { tipo: 'broker-desconectado' });
         expect(r.contexto.estado).toBe('sin-conexion');
     });
+
+    it('al volver el broker en plena llamada se republica OCUPADO, nunca libre', () => {
+        // El reverso de la excepcion de §3.2. Si la llamada sobrevive a la caida,
+        // el reenganche tiene que contar la verdad. Antes lo publicaba la capa
+        // MQTT con `('libre', null)` fijo, y el retenido se quedaba mintiendo el
+        // resto de la llamada: otra sede veia el totem disponible y lo llamaba.
+        const enLlamada = llegarAEnLlamada();
+        const caido = transicion(enLlamada, { tipo: 'broker-desconectado' }).contexto;
+        const r = transicion(caido, { tipo: 'broker-conectado' });
+
+        expect(r.contexto.estado).toBe('en-llamada');
+        expect(r.efectos).toEqual([
+            { tipo: 'publicar-estado', disponibilidad: 'ocupado', callId: enLlamada.callId }
+        ]);
+    });
+
+    it('al volver el broker estando en reposo se republica libre', () => {
+        // El broker puede haber rearrancado con la persistencia vacia: si nadie
+        // republica, la sede se queda sin estado retenido para las demas.
+        const r = transicion(contextoEn('inactivo'), { tipo: 'broker-conectado' });
+        expect(r.contexto.estado).toBe('inactivo');
+        expect(r.efectos).toContainEqual({
+            tipo: 'publicar-estado', disponibilidad: 'libre', callId: null
+        });
+    });
 });
 
 describe('maquina de estados: el otro lado cuelga', () => {

@@ -170,7 +170,21 @@ export class ClienteMqtt {
         this.cliente.on('connect', () => void this.unirse());
     }
 
-    /** Secuencia de enganche. Se ejecuta entera en cada CONNACK, no solo en el primero. */
+    /**
+     * Secuencia de enganche. Se ejecuta entera en cada CONNACK, no solo en el
+     * primero.
+     *
+     * Aqui NO se publica la presencia. Antes se hacia, con `('libre', null)`
+     * fijo, y eso convertia cada parpadeo del broker en una mentira retenida: la
+     * maquina de estados se queda deliberadamente en `en-llamada` cuando cae el
+     * broker (diseno §3.2), asi que el reenganche anunciaba `libre, callId:null`
+     * para una sede que seguia hablando, y ahi se quedaba el resto de la llamada.
+     * Otra sede la veia disponible y la llamaba a 45 s de silencio.
+     *
+     * Esta capa no sabe si hay una llamada en curso y no debe adivinarlo. Publica
+     * quien lo sabe: `broker-conectado` emite el `publicar-estado` correcto segun
+     * el estado real (`libre` en reposo, `ocupado` + `callId` en llamada).
+     */
     private async unirse(): Promise<void> {
         const cliente = this.cliente;
         if (cliente === null) return;
@@ -181,7 +195,6 @@ export class ClienteMqtt {
                 PATRON_EVENTOS_LLAMADA,
                 TOPIC_CONFIG_SEDES
             ], { qos: 1 });
-            await this.publicarEstado('libre', null);
         } catch (error) {
             console.error('fallo al reengancharse tras conectar', error);
             return;

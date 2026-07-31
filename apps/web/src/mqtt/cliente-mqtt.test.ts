@@ -59,9 +59,29 @@ describe('ClienteMqtt', () => {
         await broker.parar();
     });
 
-    it('publica su presencia al conectar', async () => {
+    it('NO publica presencia por su cuenta al conectar', async () => {
+        // Contrato deliberado: esta capa no decide la disponibilidad. Antes
+        // publicaba `('libre', null)` fijo en CADA CONNACK, tambien en las
+        // reconexiones; como la maquina de estados se queda en `en-llamada`
+        // cuando cae el broker (diseno §3.2), un parpadeo en mitad de una
+        // conversacion dejaba el retenido diciendo "libre" el resto de la
+        // llamada. Ahora publica quien conoce el estado real.
+        const observador = nuevo('canarias', 'Gran Canaria');
+        const recibidos: EstadoSede[] = [];
+        observador.alCambiarEstadoSede(e => recibidos.push(e));
+        await conectarYEsperar(observador);
+
         const lorca = nuevo('lorca', 'Lorca');
         await conectarYEsperar(lorca);
+        await esperar(200);
+
+        expect(recibidos.filter(e => e.sede === 'lorca')).toEqual([]);
+    });
+
+    it('publica su presencia cuando se le pide, y llega a los demas', async () => {
+        const lorca = nuevo('lorca', 'Lorca');
+        await conectarYEsperar(lorca);
+        await lorca.publicarEstado('libre', null);
 
         const recibidos: EstadoSede[] = [];
         const canarias = nuevo('canarias', 'Gran Canaria');
@@ -78,6 +98,7 @@ describe('ClienteMqtt', () => {
     it('el estado es retenido: quien llega despues lo recibe', async () => {
         const lorca = nuevo('lorca', 'Lorca');
         await conectarYEsperar(lorca);
+        await lorca.publicarEstado('libre', null);
         await esperar(100);
 
         const recibidos: EstadoSede[] = [];
@@ -237,12 +258,16 @@ describe('ClienteMqtt: reconexion', () => {
         await uniones.hasta(2);
         expect(uniones.total).toBeGreaterThanOrEqual(2);
 
-        // 2. Republica `online: true` sobre un broker que arranco con la
-        //    persistencia vacia: sin esto la sede quedaria gris para las demas.
+        // 2. Y el cliente vuelve a ser utilizable: puede publicar sobre el broker
+        //    recien arrancado y llega. QUIEN republica la presencia tras un
+        //    reenganche ya no es esta capa sino la maquina de estados (que es la
+        //    unica que sabe si la sede esta libre u ocupada); eso se prueba de
+        //    extremo a extremo en `integracion.test.ts`.
         const canarias = nuevo('canarias', 'Gran Canaria');
         const recibidos: EstadoSede[] = [];
         canarias.alCambiarEstadoSede(e => recibidos.push(e));
         await conectarYEsperar(canarias);
+        await lorca.publicarEstado('libre', null);
         await esperar(250);
         const deLorca = recibidos.filter(e => e.sede === 'lorca').at(-1);
         expect(deLorca).toBeDefined();

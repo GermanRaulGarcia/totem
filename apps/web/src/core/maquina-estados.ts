@@ -113,6 +113,12 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
             return sinCambios(ctx);
 
         case 'inactivo':
+            // Un CONNACK estando en reposo republica la presencia. Normalmente se
+            // llega aqui desde `sin-conexion`, pero el broker puede haber
+            // rearrancado con la persistencia vacia sin que la maquina llegara a
+            // enterarse; sin esta rama la sede quedaria sin estado retenido, es
+            // decir invisible o congelada en el ultimo valor que vieron las demas.
+            if (evento.tipo === 'broker-conectado') return irAInactivo(ctx);
             if (evento.tipo === 'toque-pantalla') {
                 return {
                     contexto: { ...ctx, estado: 'seleccionando' },
@@ -270,6 +276,21 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
         }
 
         case 'en-llamada': {
+            // El reverso de la excepcion de §3.2. La llamada sobrevive a la caida
+            // del broker, asi que cuando el broker vuelve hay que contarle la
+            // verdad: esta sede sigue OCUPADA en `callId`. Antes el reenganche lo
+            // hacia la capa MQTT publicando `libre` a ciegas en cada CONNACK, y el
+            // estado retenido se quedaba mintiendo el resto de la llamada: las
+            // demas sedes veian un totem disponible y lo llamaban a 45 s de
+            // silencio. La disponibilidad la conoce la maquina, no el transporte.
+            if (evento.tipo === 'broker-conectado') {
+                return {
+                    contexto: ctx,
+                    efectos: [
+                        { tipo: 'publicar-estado', disponibilidad: 'ocupado', callId: ctx.callId }
+                    ]
+                };
+            }
             if (evento.tipo === 'sede-acepto') {
                 if (ctx.aceptadas.includes(evento.sede)) return sinCambios(ctx);
                 return {
@@ -321,6 +342,11 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
         }
 
         case 'finalizando':
+            // `finalizando` tambien sobrevive a la caida del broker, pero NO
+            // republica nada al reconectar: `destruir-jitsi` es sincrono y
+            // `teardown-completo` se emite pase lo que pase, asi que este estado
+            // dura milisegundos y `irAInactivo` publicara `libre` acto seguido.
+            // Publicar `ocupado` aqui solo anadiria un retenido que se pisa solo.
             if (evento.tipo === 'teardown-completo') return irAInactivo(ctx);
             return sinCambios(ctx);
 
