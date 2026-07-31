@@ -1,8 +1,22 @@
 # Rediseño del sistema de tótems SPM: de conferencia permanente a llamada bajo demanda
 
-**Estado:** aprobado · **Fecha:** 2026-07-30 · **Sedes afectadas:** Canarias, Lorca, Murcia (pendiente de instalar)
+**Estado:** aprobado · **Fecha:** 2026-07-30 · **Revisado:** 2026-07-31 · **Sedes afectadas:** Canarias, Lorca, Murcia (pendiente de instalar)
 
-El sistema actual mantiene los tótems dentro de una única videoconferencia de Jitsi abierta las 24 horas. Esa decisión es la causa directa de los cuelgues, del consumo permanente de CPU y ancho de banda, y de que sea imposible elegir a qué sede se llama. Este documento define el rediseño: presencia ligera mediante MQTT y videollamada creada solo mientras dura la llamada, con selección de una o varias sedes destino y una interfaz nueva pensada para panel táctil.
+El sistema actual mantiene los tótems dentro de una única videoconferencia de Jitsi abierta las 24 horas. Esa decisión es la causa directa de los cuelgues, del consumo permanente de CPU y ancho de banda, y de que sea imposible elegir a qué sede se llama. Este documento define el rediseño: presencia ligera mediante MQTT y videollamada creada solo mientras dura la llamada, con selección de la sede destino y una interfaz nueva pensada para panel táctil.
+
+---
+
+## Cambio de alcance del 2026-07-31: la llamada multi-sede se retira
+
+> **Léase antes que nada si el historial de git resulta confuso.**
+>
+> La versión del 2026-07-30 de este documento especificaba **llamada multi-sede simultánea** como requisito de negocio, y así se construyó: se podían elegir varias sedes destino, sonaban todas a la vez, la pantalla `llamando` llevaba el estado en vivo de cada una y una tercera sede podía incorporarse a una llamada en curso.
+>
+> El **2026-07-31 negocio retiró ese requisito**: nunca habrá más de dos sedes en una llamada. En consecuencia el multi-sede se ha **eliminado por completo** del código, de los tipos, de las pruebas y de este documento — no se ha dejado desactivado. La razón es deliberada: código muerto con aspecto de vivo cuesta más que código que no existe, porque el siguiente lector no puede distinguir "esto está apagado" de "esto está roto".
+>
+> **Lo que NO cambió:** elegir *a qué* sede se llama. Con tres oficinas, Lorca sigue escogiendo entre Murcia y Canarias. Eso era el requisito original y sigue vigente. Lo retirado es únicamente *hacer sonar varias a la vez*.
+>
+> Por tanto, si en el historial de git aparece `destinos: string[]`, `estadosDestino`, `publicar-invitaciones` o el evento `se-une`, **no es una funcionalidad perdida que haya que restaurar**: es una decisión de negocio revertida a propósito.
 
 ---
 
@@ -85,7 +99,7 @@ Chrome mantiene una sesión WebRTC activa durante semanas sin cerrarse nunca. Ji
 | Alternativa descartada: Jitsi como bus de mensajes | Descartada | Conserva una sesión de navegador viva 24/7, que es justo lo que falla hoy |
 | Alternativa descartada: Cloudflare Workers | Descartada | Buena opción, pero innecesaria teniendo VPS propio |
 | Alternativa descartada: servicio en la máquina de Jitsi | Descartada | La gestiona un tercero: fricción en cada despliegue, y un fallo de Jitsi tumbaría también la presencia |
-| Topología de llamada | **Multi-sede simultánea** | Requisito de negocio: poder convocar a varias sedes a la vez |
+| Topología de llamada | **Estrictamente 1 a 1** *(revisado el 2026-07-31)* | Negocio retiró el multi-sede: nunca más de dos sedes en una llamada. Se mantiene elegir a qué sede se llama |
 | Escalado a móvil / Teams | **Fuera de alcance** | Los paneles están en zona de trabajo y casi siempre hay alguien. YAGNI |
 | Escenario de uso | Interfono interno entre personal | No hay acceso de clientes; permite una interfaz más densa |
 | Frontend | Vite + TypeScript, SPA estática | Máquina de estados explícita frente al `let api = null` global actual |
@@ -153,7 +167,7 @@ Todos los mensajes son JSON UTF-8. Transporte WSS con TLS.
 |---|---|---|---|---|
 | `totem/{sede}/estado` | **Sí** | 1 | La propia sede | Presencia y disponibilidad |
 | `totem/{sede}/invitacion` | No | 1 | Cualquier sede | Timbre dirigido a esa sede |
-| `llamada/{callId}/evento` | No | 1 | Participantes | Respuestas, incorporaciones, colgar |
+| `llamada/{callId}/evento` | No | 1 | Participantes | Respuestas y colgar |
 | `config/sedes` | **Sí** | 1 | Operaciones | Directorio de sedes |
 
 ### 4.2 Presencia: `totem/{sede}/estado`
@@ -169,7 +183,14 @@ Todos los mensajes son JSON UTF-8. Transporte WSS con TLS.
 }
 ```
 
-`disponibilidad` admite `libre` u `ocupado`. Cuando vale `ocupado`, `callId` identifica la llamada en curso, lo que permite a una tercera sede unirse.
+`disponibilidad` admite `libre` u `ocupado`. Cuando vale `ocupado`, `callId` identifica la llamada en curso.
+
+**Para qué sirve `callId` desde el 2026-07-31.** Ya no sirve para que una tercera sede se una: eso se retiró. Se sigue publicando por dos motivos vigentes:
+
+1. Cada tótem filtra por `callId` los eventos de `llamada/+/evento` — llegan los de **todas** las llamadas, y sin ese filtro un `cuelga` ajeno cortaría la conversación propia.
+2. La pantalla de reposo muestra "En llamada" en ámbar, y el selector convierte esa sede en **no pulsable**.
+
+Ese segundo punto es ahora la protección principal contra un tercero: con llamadas 1 a 1, llamar a quien ya está hablando solo produciría 45 s de timbre que nadie va a contestar. De ahí que un `ocupado` mentiroso sea un defecto serio y no cosmético (ver el aviso de §3.2).
 
 **Last Will and Testament.** Cada cliente registra al conectar:
 
@@ -192,12 +213,13 @@ Gracias al flag *retained*, un tótem que arranca conoce el estado de todas las 
   "callId": "9f2c1a4e-...",
   "sala": "spm-9f2c1a4e-...",
   "origen": "lorca",
-  "invitados": ["murcia", "canarias"],
   "ts": "2026-07-30T09:12:03Z"
 }
 ```
 
 No retenida: una invitación caducada no debe resucitar cuando un tótem se reconecta.
+
+El campo `invitados` desapareció el 2026-07-31 con el multi-sede. Con llamadas 1 a 1 no aportaba nada: el topic ya nombra al destinatario y `origen` nombra al llamante, así que la lista era el destinatario escrito por segunda vez. Un lector tolerante lo ignora si aparece en un payload antiguo — y como las invitaciones no son retenidas, no hay payloads antiguos que migrar.
 
 ### 4.4 Eventos de llamada: `llamada/{callId}/evento`
 
@@ -205,7 +227,9 @@ No retenida: una invitación caducada no debe resucitar cuando un tótem se reco
 { "callId": "9f2c1a4e-...", "sede": "murcia", "tipo": "acepta", "ts": "..." }
 ```
 
-`tipo` admite: `acepta`, `rechaza`, `sin-respuesta`, `se-une`, `cuelga`.
+`tipo` admite: `acepta`, `rechaza`, `sin-respuesta`, `cuelga`.
+
+`se-une` existía para las incorporaciones a una llamada en curso y se retiró el 2026-07-31 junto con el multi-sede. Un evento de tipo desconocido se descarta con traza, así que un tótem sin actualizar que lo publicara no rompería nada.
 
 ### 4.5 Directorio de sedes: `config/sedes`
 
@@ -249,22 +273,28 @@ arrancando ─┬─► inactivo ◄──────────────�
 inactivo ──toque──► seleccionando ──confirma──► llamando
    ▲                     │                       │
    └──── timeout 30s ────┘                       │
-                                     ┌─1ª aceptación─┐
-inactivo ─invitación─► recibiendo ───┴──acepta──► en-llamada ──► finalizando ──► inactivo
+                                     ┌─el destino acepta─┐
+inactivo ─invitación─► recibiendo ───┴───acepta────► en-llamada ──► finalizando ──► inactivo
    ▲                        │
    └── rechaza / timeout ───┘  (queda registrada como perdida)
 ```
+
+Una llamada tiene **como mucho dos sedes** (revisión del 2026-07-31). El contexto de la máquina no guarda listas: guarda a lo sumo un `origen` (quien nos llama), un `destino` (a quien llamamos) y un `par` (la otra sede ya dentro de la llamada). `destino` y `par` no son lo mismo: durante `llamando` hay destino y todavía no hay par, y es `par` quien decide si un `cuelga` remoto nos deja solos en la sala.
 
 | Estado | Entrada | Salida |
 |---|---|---|
 | `arrancando` | Carga config y conecta al broker | A `inactivo` o a `sin-conexión` |
 | `inactivo` | Modo atractor | Toque, o invitación entrante |
-| `seleccionando` | Selector de sedes | Confirmar, cancelar, o 30 s de inactividad |
-| `llamando` | Publica las invitaciones. **No crea todavía el iframe** | Primera aceptación, cancelación, o 45 s |
+| `seleccionando` | Selector de sedes: **una sola**, y elegir otra sustituye a la anterior | Confirmar, cancelar, o 30 s de inactividad |
+| `llamando` | Publica **la** invitación (una, al único destino). **No crea todavía el iframe** | Que el destino acepte, rechace o no conteste; cancelación; o 45 s |
 | `recibiendo` | Timbre y pantalla de llamada entrante | Aceptar, rechazar, o 45 s |
-| `en-llamada` | **Crea el iframe de Jitsi** | Colgar, o se queda solo |
+| `en-llamada` | **Crea el iframe de Jitsi** | Colgar, o que cuelgue el par |
 | `finalizando` | **Destruye el iframe** y publica `cuelga` | Automática a `inactivo` |
 | `sin-conexión` | Transversal | Al reconectar, vuelve al estado seguro |
+
+**El evento `broker-conectado` publica presencia, y publica la verdadera.** Desde `arrancando`, `sin-conexión` e `inactivo` publica `libre`; desde `en-llamada` publica `ocupado` con el `callId` en curso. Es la contrapartida obligatoria de que `en-llamada` sobreviva a la caída del broker (§3.2): quien decide la disponibilidad es esta máquina, nunca la capa de transporte, que no sabe si hay llamada. Desde `finalizando` no publica nada a propósito: ese estado dura milisegundos y la transición a `inactivo` publicará `libre` acto seguido.
+
+Solo el **destino de esta llamada** puede contestarla: una `acepta` de otra sede sobre el mismo `callId` se ignora en vez de meterla en la conversación. El filtro por `callId` del cableado descarta las llamadas ajenas, pero no cubre a una sede que publique sobre el `callId` propio.
 
 ### 5.3 Reglas invariantes
 
@@ -274,8 +304,9 @@ inactivo ─invitación─► recibiendo ───┴──acepta──► en-ll
 2. **`sin-conexión` es transversal, con una excepción deliberada.** Se entra desde cualquier estado y se sale al estado seguro. Nunca una pantalla negra sin explicación.
 
    **La excepción: `en-llamada` y `finalizando` no ceden ante una caída del broker.** Es la consecuencia directa del desacoplamiento de §3.2 — el vídeo viaja por Jitsi, así que una caída de MQTT no tiene por qué cortar la conversación. Si la máquina saliera de `en-llamada`, además de cortar la llamada sin motivo dejaría el iframe huérfano, porque `destruir-jitsi` solo se emite al salir de `en-llamada` por la vía normal. Se pierde la presencia y nada más.
-3. **Una invitación durante `en-llamada` no provoca cambio de estado.** Es un aviso dentro de la llamada ("Canarias quiere unirse"). Esto evita que una llamada entrante tumbe una conversación en curso, que es exactamente lo que hace el código actual.
-4. Las transiciones no contempladas no existen. Ese es el objetivo completo.
+3. **Una invitación durante `en-llamada` no provoca cambio de estado.** Se ignora. Antes del 2026-07-31 era un aviso ("Canarias quiere unirse") porque la tercera sede podía incorporarse; ahora sencillamente no hay a dónde incorporarse. Lo que la regla protege sigue siendo lo mismo y sigue siendo lo importante: **una llamada entrante no puede tumbar una conversación en curso**, que es exactamente lo que hace el sistema antiguo.
+4. **Una llamada tiene como mucho dos sedes.** Nadie se incorpora a una llamada en curso, y una sede `ocupado` no es pulsable en el selector. No existe un camino por el que un tercero entre en una conversación.
+5. Las transiciones no contempladas no existen. Ese es el objetivo completo.
 
 ### 5.4 Temporizadores
 
@@ -296,11 +327,13 @@ inactivo ─invitación─► recibiendo ───┴──acepta──► en-ll
 | Pantalla | Contenido |
 |---|---|
 | **Reposo** | Fondo oscuro, reloj grande, logo discreto, y una tarjeta por sede con estado en vivo: verde libre, ámbar en llamada, gris sin conexión. "Toca para llamar" |
-| **Selección** | Tarjetas grandes con multiselección visible. Las sedes offline aparecen en gris y no son pulsables: nunca se puede lanzar una llamada al vacío |
-| **Llamando** | Estado por sede en tiempo real (*Sonando… / Aceptó / Rechazó / Sin respuesta*), ringback audible y cancelar siempre disponible |
+| **Selección** | Tarjetas grandes, **una sola elegida a la vez**: tocar otra sustituye a la anterior. Las sedes offline **y las ocupadas** aparecen apagadas y no son pulsables: nunca se lanza una llamada al vacío ni a quien ya está hablando |
+| **Llamando** | La sede a la que se llama, *Sonando…*, ringback audible y cancelar siempre disponible |
 | **Recibiendo** | Quién llama, pulso animado, Aceptar en verde grande y Rechazar. Timbre **en bucle con volumen creciente** |
 | **En llamada** | Vídeo a pantalla completa, `TOOLBAR_BUTTONS` vacío. Barra propia con micro, cámara y colgar. Se autooculta y reaparece al tocar |
 | **Sin conexión** | Mensaje honesto con reintento y contador |
+
+**Por qué la pantalla `llamando` ya no lleva estado por sede.** Hasta el 2026-07-31 mostraba *Sonando… / Aceptó / Rechazó / Sin respuesta* para cada invitada, porque con varias sonando a la vez tenía sentido: una podía haber rechazado mientras otra seguía sonando. Con una sola sede destino, esa pantalla **solo puede mostrar "Sonando…"**: si el destino acepta se pasa a `en-llamada`, y si rechaza o no contesta se vuelve a `inactivo`. Ninguno de los otros tres textos llegaría a pintarse nunca. Mantener el campo habría sido dejar una máquina de estados que sólo puede tomar un valor.
 
 ### 6.1 Requisitos técnicos de la interfaz
 
@@ -449,7 +482,7 @@ Dos notas sobre criterios:
 | El proveedor tarda o se niega a activar JWT | Alto | Salas con UUID efímero como parche; escalar la petición desde el principio |
 | Los PCs actuales resultan insuficientes | Medio | Medir en la fase 6; Raspberry Pi 5 como plan B por sede |
 | Fugas de memoria pese al nuevo ciclo de vida | Medio | La prueba de resistencia de 72 h lo detecta antes de producción |
-| Ancho de banda en Canarias con 3 sedes | Medio | Reactivar `p2p` para llamadas de dos participantes y medir |
+| Ancho de banda en Canarias | Bajo *(revisado el 2026-07-31)* | Al ser todas las llamadas de dos participantes, `p2p` es aplicable siempre. Queda reactivarlo y medir |
 
 **Cuestiones abiertas:**
 
