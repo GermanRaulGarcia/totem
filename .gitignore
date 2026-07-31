@@ -13,6 +13,7 @@ apps/web/dist/
 
 # Herramientas de desarrollo
 .superpowers/
+.atl/
 playwright-report/
 test-results/
 
