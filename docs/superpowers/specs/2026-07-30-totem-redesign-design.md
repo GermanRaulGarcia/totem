@@ -290,7 +290,7 @@ Una llamada tiene **como mucho dos sedes** (revisión del 2026-07-31). El contex
 | `recibiendo` | Timbre y pantalla de llamada entrante | Aceptar, rechazar, o 45 s |
 | `en-llamada` | **Crea el iframe de Jitsi** | Colgar, o que cuelgue el par |
 | `finalizando` | **Destruye el iframe** y publica `cuelga` | Automática a `inactivo` |
-| `sin-conexión` | Transversal | Al reconectar, vuelve al estado seguro |
+| `sin-conexión` | Transversal | Al reconectar, vuelve **siempre a `inactivo`** |
 
 **El evento `broker-conectado` publica presencia, y publica la verdadera.** Desde `arrancando`, `sin-conexión` e `inactivo` publica `libre`; desde `en-llamada` publica `ocupado` con el `callId` en curso. Es la contrapartida obligatoria de que `en-llamada` sobreviva a la caída del broker (§3.2): quien decide la disponibilidad es esta máquina, nunca la capa de transporte, que no sabe si hay llamada. Desde `finalizando` no publica nada a propósito: ese estado dura milisegundos y la transición a `inactivo` publicará `libre` acto seguido.
 
@@ -301,7 +301,9 @@ Solo el **destino de esta llamada** puede contestarla: una `acepta` de otra sede
 1. **Un solo punto crea el iframe de Jitsi y un solo punto lo destruye:** las acciones de entrada y salida de `en-llamada`. En ningún otro lugar del código se toca Jitsi. Si el iframe solo puede nacer y morir en un sitio, no puede quedarse huérfano.
 
    Esto aplica **también a quien llama**: durante `llamando` no se carga Jitsi. El llamante entra a la sala al mismo tiempo que el primero que acepta, en la transición a `en-llamada`. Además de mantener el invariante, evita levantar una sesión de Jitsi para una llamada que nadie va a contestar.
-2. **`sin-conexión` es transversal, con una excepción deliberada.** Se entra desde cualquier estado y se sale al estado seguro. Nunca una pantalla negra sin explicación.
+2. **`sin-conexión` es transversal, con una excepción deliberada.** Se entra desde cualquier estado y se sale **siempre a `inactivo`**. Nunca una pantalla negra sin explicación.
+
+   *Corregido el 2026-07-31.* Este documento decía "se sale al estado seguro", y el contexto llegó a llevar un campo `estadoSeguro` para ello — pero nunca lo leyó nadie: `broker-conectado` siempre ha llamado a `irAInactivo`. El campo se ha eliminado y la regla se redacta como lo que el código hace de verdad. **Volver a `inactivo` es además lo correcto**, no una simplificación: los únicos estados que sobreviven a una caída del broker son `en-llamada` y `finalizando`, así que cuando se pasa por `sin-conexión` el "estado seguro" que se restauraría sería `seleccionando`, `llamando` o `recibiendo` — un selector abierto de hace un minuto, o un timbre de una llamada que el otro lado ya dio por perdida. Reposo es la única salida honesta.
 
    **La excepción: `en-llamada` y `finalizando` no ceden ante una caída del broker.** Es la consecuencia directa del desacoplamiento de §3.2 — el vídeo viaja por Jitsi, así que una caída de MQTT no tiene por qué cortar la conversación. Si la máquina saliera de `en-llamada`, además de cortar la llamada sin motivo dejaría el iframe huérfano, porque `destruir-jitsi` solo se emite al salir de `en-llamada` por la vía normal. Se pierde la presencia y nada más.
 3. **Una invitación durante `en-llamada` no provoca cambio de estado.** Se ignora. Antes del 2026-07-31 era un aviso ("Canarias quiere unirse") porque la tercera sede podía incorporarse; ahora sencillamente no hay a dónde incorporarse. Lo que la regla protege sigue siendo lo mismo y sigue siendo lo importante: **una llamada entrante no puede tumbar una conversación en curso**, que es exactamente lo que hace el sistema antiguo.

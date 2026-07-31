@@ -24,7 +24,7 @@ describe('maquina de estados: arranque y conexion', () => {
         expect(r.contexto.estado).toBe('sin-conexion');
     });
 
-    it('vuelve al estado seguro al reconectar', () => {
+    it('al reconectar se vuelve SIEMPRE a inactivo', () => {
         const conectado = transicion(contextoInicial(), { tipo: 'broker-conectado' }).contexto;
         const caido = transicion(conectado, { tipo: 'broker-desconectado' }).contexto;
         const r = transicion(caido, { tipo: 'broker-conectado' });

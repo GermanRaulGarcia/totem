@@ -99,7 +99,6 @@ export type NombreTimer = 'seleccion' | 'sin-respuesta' | 'union-jitsi';
  */
 export interface Contexto {
     estado: Estado;
-    estadoSeguro: Estado;
     callId: string | null;
     sala: string | null;
     /** Quien nos llama, mientras la llamada es entrante. */

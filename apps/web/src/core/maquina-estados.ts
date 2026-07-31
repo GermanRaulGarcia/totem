@@ -8,7 +8,6 @@ import {
 export function contextoInicial(): Contexto {
     return {
         estado: 'arrancando',
-        estadoSeguro: 'inactivo',
         callId: null,
         sala: null,
         origen: null,
@@ -19,7 +18,7 @@ export function contextoInicial(): Contexto {
 
 /** Solo para tests: construye un contexto ya situado en un estado concreto. */
 export function contextoEn(estado: Estado): Contexto {
-    return { ...contextoInicial(), estado, estadoSeguro: estado };
+    return { ...contextoInicial(), estado };
 }
 
 /** Inyectable para que los tests y el E2E puedan fijar el identificador. */
@@ -38,7 +37,6 @@ function irAInactivo(ctx: Contexto, efectosPrevios: Efecto[] = []): Resultado {
         contexto: {
             ...ctx,
             estado: 'inactivo',
-            estadoSeguro: 'inactivo',
             callId: null,
             sala: null,
             origen: null,
