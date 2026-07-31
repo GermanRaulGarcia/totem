@@ -120,9 +120,11 @@ raiz.addEventListener('click', ev => {
     switch (toque.accion) {
         case 'despertar': totem.emitir({ tipo: 'toque-pantalla' }); break;
         case 'llamar': {
-            // El boton esta deshabilitado sin seleccion, pero eso es una propiedad
-            // del marcado, no una garantia del tipo. La comprobacion es la garantia.
-            const destino = totem.seleccion;
+            // El boton se deshabilita solo si el destino elegido sigue siendo
+            // llamable, pero eso es una propiedad del marcado, no una garantia.
+            // Aqui se revalida contra la presencia vigente en el instante del
+            // toque: entre el ultimo repintado y el dedo cabe un mensaje MQTT.
+            const destino = totem.destinoElegible();
             if (destino !== null) totem.emitir({ tipo: 'seleccion-confirmada', destino });
             break;
         }

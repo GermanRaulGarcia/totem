@@ -45,6 +45,19 @@ async function estadoRetenidoDe(url: string, sede: string): Promise<EstadoSede |
     return vistos.at(-1) ?? null;
 }
 
+/** Publica la presencia de una sede sin pasar por su totem, como haria ella misma. */
+async function publicarEstadoCrudo(
+    url: string, sede: string, disponibilidad: 'libre' | 'ocupado', callId: string | null
+): Promise<void> {
+    const bruto = await mqtt.connectAsync(url);
+    const estado: EstadoSede = {
+        sede, nombre: sede, online: true, disponibilidad, callId,
+        ts: new Date().toISOString()
+    };
+    await bruto.publishAsync(topicEstado(sede), JSON.stringify(estado), { qos: 1, retain: true });
+    await bruto.endAsync();
+}
+
 interface Registro {
     creados: string[];
     destruidos: number;
@@ -261,6 +274,44 @@ describe('integracion: dos sedes contra un broker real', () => {
         lorca.totem.alternarSeleccion('canarias');
         expect(lorca.totem.seleccion).toBeNull();
     });
+
+    it('la sede elegida que pasa a ocupada se deselecciona sola', async () => {
+        // El usuario abre el selector, elige Murcia y duda. Murcia entra en una
+        // llamada con Canarias. Sin limpiar la seleccion, la tarjeta se pintaba
+        // gris pero Llamar seguia apuntandole y la invitacion salia a un totem
+        // que no podia contestarla.
+        const lorca = montar('lorca', 'Lorca', { } as HTMLElement);
+        lorca.totem.arrancar();
+        await hasta(() => lorca.totem.contexto.estado === 'inactivo');
+
+        await publicarEstadoCrudo(broker.url, 'murcia', 'libre', null);
+        await hasta(() => lorca.totem.sedes().some(s => s.sede === 'murcia' && s.online));
+
+        lorca.totem.emitir({ tipo: 'toque-pantalla' });
+        lorca.totem.alternarSeleccion('murcia');
+        expect(lorca.totem.seleccion).toBe('murcia');
+        expect(lorca.totem.destinoElegible()).toBe('murcia');
+
+        await publicarEstadoCrudo(broker.url, 'murcia', 'ocupado', 'call-ajena');
+        await hasta(() => lorca.totem.seleccion === null);
+
+        expect(lorca.totem.destinoElegible()).toBeNull();
+        // Y el selector sigue abierto: lo que se cae es la eleccion, no la pantalla.
+        expect(lorca.totem.contexto.estado).toBe('seleccionando');
+    }, 30_000);
+
+    it('destinoElegible descarta una sede que solo existe en el directorio', async () => {
+        // `sedes()` siembra el directorio con `online: false`. Una sede que nunca
+        // ha conectado se ve en pantalla pero no se le puede llamar.
+        const lorca = montar('lorca', 'Lorca', { } as HTMLElement);
+        lorca.totem.arrancar();
+        await hasta(() => lorca.totem.contexto.estado === 'inactivo');
+
+        lorca.totem.emitir({ tipo: 'toque-pantalla' });
+        lorca.totem.alternarSeleccion('canarias');
+        expect(lorca.totem.seleccion).toBe('canarias');
+        expect(lorca.totem.destinoElegible()).toBeNull();
+    }, 30_000);
 
     it('un parpadeo del broker en plena llamada no deja la presencia mintiendo "libre"', async () => {
         const lorca = montar('lorca', 'Lorca', { } as HTMLElement);

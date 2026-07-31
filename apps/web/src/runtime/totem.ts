@@ -1,5 +1,5 @@
 import { contextoInicial, transicion } from '../core/maquina-estados';
-import type { Contexto, EstadoSede, Evento, Sede } from '../core/tipos';
+import { esLlamable, type Contexto, type EstadoSede, type Evento, type Sede } from '../core/tipos';
 import type { ClienteMqtt } from '../mqtt/cliente-mqtt';
 import type { SesionJitsi } from '../jitsi/sesion-jitsi';
 import { Interprete, type Sonidos, type Temporizadores } from './interprete';
@@ -90,6 +90,21 @@ export class Totem {
         this.op.alCambiar?.();
     }
 
+    /**
+     * La sede elegida SI sigue siendo llamable, y `null` en cualquier otro caso.
+     *
+     * `seleccion` ya se limpia sola cuando cambia la presencia, pero eso depende
+     * de que el mensaje MQTT llegue antes que el toque. Esta es la comprobacion
+     * que manda, la que se hace en el instante de pulsar Llamar y contra la
+     * presencia vigente en ese instante.
+     */
+    destinoElegible(): string | null {
+        const elegida = this.seleccion;
+        if (elegida === null) return null;
+        const estado = this.sedes().find(s => s.sede === elegida);
+        return estado !== undefined && esLlamable(estado) ? elegida : null;
+    }
+
     /** Registra los callbacks y abre la conexion. No espera al primer CONNACK. */
     arrancar(): void {
         const { mqtt, jitsi } = this.op;
@@ -107,6 +122,13 @@ export class Totem {
         mqtt.alCambiarEstadoSede(estado => {
             if (estado.sede === this.op.sede) return;
             this.presencia.set(estado.sede, estado);
+            // Si la sede elegida deja de ser llamable mientras el usuario duda
+            // delante del panel, la eleccion se cae con ella. Sin esto la tarjeta
+            // se pintaba gris y deshabilitada pero la seleccion seguia viva, y
+            // Llamar lanzaba la invitacion a un totem que ya no podia contestarla.
+            if (this.seleccion === estado.sede && !esLlamable(estado)) {
+                this.seleccion = null;
+            }
             this.op.alCambiar?.();
         });
         mqtt.alRecibirInvitacion(invitacion => {

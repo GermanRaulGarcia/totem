@@ -15,6 +15,18 @@ export interface EstadoSede {
     ts: string;
 }
 
+/**
+ * Regla de dominio: a que sede se puede llamar AHORA MISMO.
+ *
+ * Vive en `core` y no en la interfaz porque la comprueban tres capas -el boton
+ * Llamar, el saneado de la seleccion en `Totem` y el manejador del toque- y si
+ * discreparan volveria justo el defecto que este predicado cierra: una tarjeta
+ * pintada como no pulsable con el boton Llamar todavia apuntandole.
+ */
+export function esLlamable(s: EstadoSede): boolean {
+    return s.online && s.disponibilidad !== 'ocupado';
+}
+
 export interface Invitacion {
     callId: string;
     sala: string;

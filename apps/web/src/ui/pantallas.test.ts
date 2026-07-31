@@ -72,6 +72,47 @@ describe('pantallas', () => {
         expect(raiz.querySelectorAll('[data-elegida="si"]')).toHaveLength(1);
     });
 
+    it('si la sede elegida pasa a OCUPADA, Llamar se deshabilita', () => {
+        // El usuario elige Murcia con el selector abierto y duda. Murcia acepta
+        // una llamada de Canarias. La tarjeta se pinta gris y deshabilitada, pero
+        // sin revalidar el destino el boton Llamar seguia habilitado apuntandole:
+        // la invitacion salia hacia un totem en `en-llamada`, que la ignora, y
+        // quien llama se comia 45 s de "Sonando..." para nadie. El selector tiene
+        // 30 s de margen, asi que la ventana para dudar es real.
+        const antes = vista({ contexto: contextoEn('seleccionando'), seleccion: 'murcia' });
+        render(raiz, antes);
+        expect(raiz.querySelector<HTMLButtonElement>('[data-accion="llamar"]')!.disabled).toBe(false);
+
+        render(raiz, vista({
+            contexto: contextoEn('seleccionando'),
+            sedes: [sede('murcia', true, 'ocupado')],
+            seleccion: 'murcia'
+        }));
+        expect(raiz.querySelector<HTMLButtonElement>('[data-accion="llamar"]')!.disabled).toBe(true);
+        expect(raiz.querySelector<HTMLButtonElement>('[data-sede="murcia"]')!.disabled).toBe(true);
+        // Y la tarjeta no se pinta a la vez deshabilitada y elegida.
+        expect(raiz.querySelector('[data-elegida="si"]')).toBeNull();
+    });
+
+    it('si la sede elegida se cae de la red, Llamar se deshabilita', () => {
+        render(raiz, vista({
+            contexto: contextoEn('seleccionando'),
+            sedes: [sede('murcia', false)],
+            seleccion: 'murcia'
+        }));
+        expect(raiz.querySelector<HTMLButtonElement>('[data-accion="llamar"]')!.disabled).toBe(true);
+        expect(raiz.querySelector('[data-elegida="si"]')).toBeNull();
+    });
+
+    it('una seleccion que ya no figura entre las sedes tampoco habilita Llamar', () => {
+        render(raiz, vista({
+            contexto: contextoEn('seleccionando'),
+            sedes: [],
+            seleccion: 'fantasma'
+        }));
+        expect(raiz.querySelector<HTMLButtonElement>('[data-accion="llamar"]')!.disabled).toBe(true);
+    });
+
     it('solo puede haber UNA tarjeta marcada como elegida', () => {
         render(raiz, vista({
             contexto: contextoEn('seleccionando'),

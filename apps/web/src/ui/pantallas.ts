@@ -1,4 +1,4 @@
-import type { Contexto, Estado, EstadoSede } from '../core/tipos';
+import { esLlamable, type Contexto, type Estado, type EstadoSede } from '../core/tipos';
 
 /**
  * Que significa un toque sobre el DOM que pinta este modulo.
@@ -74,6 +74,21 @@ function nombreDe(v: Vista, id: string): string {
     return v.sedes.find(s => s.sede === id)?.nombre ?? id;
 }
 
+/**
+ * ¿Se puede pulsar Llamar? No basta con que haya una sede elegida: la presencia
+ * llega por MQTT en cualquier momento, tambien con el selector abierto y el
+ * usuario dudando delante del panel. Sin revalidar aqui, la tarjeta de la sede
+ * elegida se pintaba gris y deshabilitada mientras el boton Llamar seguia
+ * habilitado apuntandole, y la llamada salia hacia un totem que ya no podia
+ * contestarla: 45 s de "Sonando..." para nadie. El selector tiene 30 s de
+ * margen, asi que la ventana no es teorica.
+ */
+function destinoPulsable(v: Vista): boolean {
+    if (v.seleccion === null) return false;
+    const elegida = v.sedes.find(s => s.sede === v.seleccion);
+    return elegida !== undefined && esLlamable(elegida);
+}
+
 function tarjetas(v: Vista, seleccionable: boolean): string {
     return v.sedes.map(s => {
         // En modo no seleccionable NO se usa `disabled`: un boton deshabilitado no
@@ -92,13 +107,13 @@ function tarjetas(v: Vista, seleccionable: boolean): string {
         // 1 esta es la proteccion principal contra un tercero: nadie se incorpora
         // a una llamada en curso, asi que llamar a quien ya esta hablando solo
         // produciria 45 s de timbre que nadie va a contestar.
-        const bloqueado = seleccionable && (!s.online || s.disponibilidad === 'ocupado');
+        const bloqueado = seleccionable && !esLlamable(s);
         return `
         <button class="${claseSede(s)}${inerte ? ' sede--inerte' : ''}" data-sede="${escapar(s.sede)}"
                 ${inerte ? 'data-accion="despertar"' : ''}
                 ${bloqueado ? 'disabled' : ''}
                 ${inerte || bloqueado ? 'aria-disabled="true"' : ''}
-                ${v.seleccion === s.sede ? 'data-elegida="si"' : ''}>
+                ${v.seleccion === s.sede && !bloqueado ? 'data-elegida="si"' : ''}>
             <span class="sede__nombre">${escapar(s.nombre)}</span>
             <span class="sede__estado">${s.online
                 ? (s.disponibilidad === 'ocupado' ? 'En llamada' : 'Disponible')
@@ -205,7 +220,7 @@ export function render(raiz: HTMLElement, v: Vista): void {
                     <nav class="acciones">
                         <button data-accion="cancelar" class="boton">Cancelar</button>
                         <button data-accion="llamar" class="boton boton--principal"
-                                ${v.seleccion === null ? 'disabled' : ''}>Llamar</button>
+                                ${destinoPulsable(v) ? '' : 'disabled'}>Llamar</button>
                     </nav>
                 </section>`;
             return;
