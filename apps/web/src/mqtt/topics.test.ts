@@ -28,4 +28,23 @@ describe('topics', () => {
     it('rechaza identificadores de sede vacios', () => {
         expect(() => topicEstado('')).toThrow('sede vacia');
     });
+
+    it('rechaza una sede que solo tiene espacios', () => {
+        expect(() => topicEstado('   ')).toThrow('sede vacia');
+    });
+
+    it('recorta los espacios sobrantes', () => {
+        expect(topicEstado('  lorca  ')).toBe('totem/lorca/estado');
+    });
+
+    // Un id con estos caracteres cambia la FORMA del topic, no solo su contenido.
+    it.each(['+', '#', '/'])('rechaza una sede que contiene %s', caracter => {
+        expect(() => topicEstado(`lorca${caracter}x`)).toThrow('sede invalida');
+        expect(() => topicInvitacion(`lorca${caracter}x`)).toThrow('sede invalida');
+    });
+
+    it('valida tambien el callId, que llega por red', () => {
+        expect(() => topicEventoLlamada('')).toThrow('callId vacia');
+        expect(() => topicEventoLlamada('c1/#')).toThrow('callId invalida');
+    });
 });
