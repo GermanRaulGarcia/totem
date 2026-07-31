@@ -42,6 +42,12 @@ export type Estado =
     | 'finalizando'
     | 'sin-conexion';
 
+/**
+ * Estado en vivo de cada sede invitada durante una llamada saliente.
+ * La pantalla `llamando` lo muestra sede por sede (diseno §6).
+ */
+export type EstadoDestino = 'sonando' | 'acepto' | 'rechazo' | 'sin-respuesta' | 'colgo';
+
 export type Evento =
     | { tipo: 'broker-conectado' }
     | { tipo: 'broker-desconectado' }
@@ -54,7 +60,11 @@ export type Evento =
     | { tipo: 'rechazar' }
     | { tipo: 'sin-respuesta' }
     | { tipo: 'sede-acepto'; sede: string }
+    | { tipo: 'sede-rechazo'; sede: string }
+    | { tipo: 'sede-sin-respuesta'; sede: string }
+    | { tipo: 'sede-colgo'; sede: string }
     | { tipo: 'colgar' }
+    | { tipo: 'jitsi-unido' }
     | { tipo: 'jitsi-fallo' }
     | { tipo: 'teardown-completo' };
 
@@ -72,7 +82,7 @@ export type Efecto =
     | { tipo: 'cancelar-timer'; nombre: NombreTimer }
     | { tipo: 'registrar-perdida'; origen: string };
 
-export type NombreTimer = 'seleccion' | 'sin-respuesta';
+export type NombreTimer = 'seleccion' | 'sin-respuesta' | 'union-jitsi';
 
 export interface Contexto {
     estado: Estado;
@@ -82,6 +92,8 @@ export interface Contexto {
     origen: string | null;
     destinos: string[];
     aceptadas: string[];
+    /** Estado en vivo por sede invitada. Clave: id de sede. */
+    estadosDestino: Record<string, EstadoDestino>;
 }
 
 export interface Resultado {
@@ -91,3 +103,5 @@ export interface Resultado {
 
 export const MS_TIMEOUT_SELECCION = 30_000;
 export const MS_TIMEOUT_SIN_RESPUESTA = 45_000;
+/** Diseno §5.4: si `videoConferenceJoined` no llega en 15 s se aborta y se vuelve a reposo. */
+export const MS_TIMEOUT_UNION_JITSI = 15_000;

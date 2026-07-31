@@ -25,7 +25,33 @@ export class Interprete {
         private readonly emitir: (evento: Evento) => void
     ) {}
 
-    async ejecutar(efectos: Efecto[]): Promise<void> {
+    /**
+     * Cola de serializacion. `uno()` espera a I/O real (publicaciones QoS 1), asi
+     * que dos lotes lanzados desde transiciones distintas podian solaparse: si un
+     * publish del lote de `aceptar` se atascaba, el usuario colgaba, `destruir-jitsi`
+     * corria con `api === null` y no hacia nada, y al desatascarse el publish el
+     * lote antiguo seguia y CREABA el iframe con la maquina ya en `inactivo`.
+     * Un iframe huerfano que nada volveria a destruir: el fallo original del
+     * sistema antiguo por otra puerta. Encadenar los lotes lo hace imposible.
+     */
+    private cola: Promise<void> = Promise.resolve();
+
+    ejecutar(efectos: Efecto[]): Promise<void> {
+        const lote = this.cola.then(() => this.ejecutarLote(efectos));
+        this.cola = lote;
+        return lote;
+    }
+
+    /** Resuelve cuando la cola esta vacia. Para tests y cierres ordenados. */
+    async enReposo(): Promise<void> {
+        let anterior: Promise<void>;
+        do {
+            anterior = this.cola;
+            await anterior;
+        } while (this.cola !== anterior);
+    }
+
+    private async ejecutarLote(efectos: Efecto[]): Promise<void> {
         for (const efecto of efectos) {
             try {
                 await this.uno(efecto);
@@ -73,13 +99,13 @@ export class Interprete {
             case 'sonar-ringback': this.sonidos.sonarRingback(); return;
             case 'parar-ringback': this.sonidos.pararRingback(); return;
 
-            case 'arrancar-timer':
-                this.timers.arrancar(efecto.nombre, efecto.ms, () => {
-                    this.emitir(efecto.nombre === 'seleccion'
-                        ? { tipo: 'timeout-seleccion' }
-                        : { tipo: 'sin-respuesta' });
+            case 'arrancar-timer': {
+                const nombre = efecto.nombre;
+                this.timers.arrancar(nombre, efecto.ms, () => {
+                    this.emitir(eventoDeTimer(nombre));
                 });
                 return;
+            }
 
             case 'cancelar-timer':
                 this.timers.cancelar(efecto.nombre);
@@ -88,6 +114,29 @@ export class Interprete {
             case 'registrar-perdida':
                 this.registrarPerdida(efecto.origen);
                 return;
+
+            // `uno()` devuelve Promise<void>, asi que `strict` NO obliga a cubrir
+            // todas las variantes: una variante nueva de Efecto se convertiria en
+            // un no-op silencioso. Y en este switch viven crear-jitsi y
+            // destruir-jitsi, asi que "silencioso" significa un iframe huerfano con
+            // la suite en verde. El never lo convierte en error de compilacion, y
+            // el throw es seguro porque ejecutarLote aisla cada efecto.
+            default: {
+                const _exhaustivo: never = efecto;
+                throw new Error(`efecto no implementado: ${JSON.stringify(_exhaustivo)}`);
+            }
+        }
+    }
+}
+
+function eventoDeTimer(nombre: NombreTimer): Evento {
+    switch (nombre) {
+        case 'seleccion': return { tipo: 'timeout-seleccion' };
+        case 'sin-respuesta': return { tipo: 'sin-respuesta' };
+        case 'union-jitsi': return { tipo: 'jitsi-fallo' };
+        default: {
+            const _exhaustivo: never = nombre;
+            throw new Error(`timer no implementado: ${String(_exhaustivo)}`);
         }
     }
 }

@@ -318,3 +318,197 @@ describe('maquina de estados: desacoplamiento de senalizacion y medio', () => {
         expect(r.contexto.estado).toBe('sin-conexion');
     });
 });
+
+describe('maquina de estados: el otro lado cuelga', () => {
+    const llegarAEnLlamada = (destinos = ['murcia']) => {
+        const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos }).contexto;
+        return transicion(llamando, { tipo: 'sede-acepto', sede: destinos[0]! }).contexto;
+    };
+
+    it('si cuelga la unica sede acompanante se pasa a finalizando', () => {
+        const r = transicion(llegarAEnLlamada(), { tipo: 'sede-colgo', sede: 'murcia' });
+        expect(r.contexto.estado).toBe('finalizando');
+        expect(r.efectos).toContainEqual({ tipo: 'destruir-jitsi' });
+    });
+
+    it('con tres en la llamada, que cuelgue una no acaba la llamada', () => {
+        const dos = llegarAEnLlamada(['murcia', 'canarias']);
+        const tres = transicion(dos, { tipo: 'sede-acepto', sede: 'canarias' }).contexto;
+        const r = transicion(tres, { tipo: 'sede-colgo', sede: 'murcia' });
+        expect(r.contexto.estado).toBe('en-llamada');
+        expect(r.contexto.aceptadas).toEqual(['canarias']);
+        expect(r.efectos.some(e => e.tipo === 'destruir-jitsi')).toBe(false);
+    });
+
+    it('cuando cuelga la ultima, entonces si se destruye el iframe', () => {
+        const dos = llegarAEnLlamada(['murcia', 'canarias']);
+        const tres = transicion(dos, { tipo: 'sede-acepto', sede: 'canarias' }).contexto;
+        const quedaUna = transicion(tres, { tipo: 'sede-colgo', sede: 'murcia' }).contexto;
+        const r = transicion(quedaUna, { tipo: 'sede-colgo', sede: 'canarias' });
+        expect(r.contexto.estado).toBe('finalizando');
+        expect(r.efectos.filter(e => e.tipo === 'destruir-jitsi')).toHaveLength(1);
+    });
+
+    it('un cuelgue de una sede que no estaba en la llamada se ignora', () => {
+        const ctx = llegarAEnLlamada();
+        const r = transicion(ctx, { tipo: 'sede-colgo', sede: 'desconocida' });
+        expect(r.contexto).toBe(ctx);
+        expect(r.efectos).toEqual([]);
+    });
+
+    it('INVARIANTE: una llamada que cuelga el OTRO lado deja cero iframes vivos', () => {
+        // El fallo fundacional del sistema antiguo: quedarse solo en una sala para
+        // siempre. El diseno lo cubre en §5.2 ("Colgar, o se queda solo").
+        const secuencia: Evento[] = [
+            { tipo: 'broker-conectado' },
+            { tipo: 'toque-pantalla' },
+            { tipo: 'seleccion-confirmada', destinos: ['murcia'] },
+            { tipo: 'sede-acepto', sede: 'murcia' },
+            { tipo: 'sede-colgo', sede: 'murcia' },
+            { tipo: 'teardown-completo' }
+        ];
+        let ctx = contextoInicial();
+        let creados = 0;
+        let destruidos = 0;
+        for (const ev of secuencia) {
+            const r = transicion(ctx, ev);
+            ctx = r.contexto;
+            creados += r.efectos.filter(e => e.tipo === 'crear-jitsi').length;
+            destruidos += r.efectos.filter(e => e.tipo === 'destruir-jitsi').length;
+        }
+        expect(creados).toBe(1);
+        expect(destruidos).toBe(1);
+        expect(ctx.estado).toBe('inactivo');
+    });
+
+    it('si el origen cuelga mientras suena, el timbre para y vuelve a inactivo', () => {
+        const rec = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        }).contexto;
+        const r = transicion(rec, { tipo: 'sede-colgo', sede: 'murcia' });
+        expect(r.contexto.estado).toBe('inactivo');
+        expect(r.efectos).toContainEqual({ tipo: 'parar-timbre' });
+        expect(r.efectos).toContainEqual({ tipo: 'registrar-perdida', origen: 'murcia' });
+    });
+});
+
+describe('maquina de estados: estado por sede durante la llamada saliente', () => {
+    const llamandoA = (destinos: string[]) => {
+        const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
+        return transicion(sel, { tipo: 'seleccion-confirmada', destinos }).contexto;
+    };
+
+    it('al confirmar, todas las sedes invitadas quedan sonando', () => {
+        const ctx = llamandoA(['murcia', 'canarias']);
+        expect(ctx.estadosDestino).toEqual({ murcia: 'sonando', canarias: 'sonando' });
+    });
+
+    it('un rechazo se anota sin cortar si queda alguna sonando', () => {
+        const ctx = llamandoA(['murcia', 'canarias']);
+        const r = transicion(ctx, { tipo: 'sede-rechazo', sede: 'murcia' });
+        expect(r.contexto.estado).toBe('llamando');
+        expect(r.contexto.estadosDestino['murcia']).toBe('rechazo');
+        expect(r.efectos).toEqual([]);
+    });
+
+    it('si TODAS rechazan la llamada acaba en el acto, sin agotar los 45 s', () => {
+        const ctx = llamandoA(['murcia', 'canarias']);
+        const una = transicion(ctx, { tipo: 'sede-rechazo', sede: 'murcia' }).contexto;
+        const r = transicion(una, { tipo: 'sede-rechazo', sede: 'canarias' });
+        expect(r.contexto.estado).toBe('inactivo');
+        expect(r.efectos).toContainEqual({ tipo: 'parar-ringback' });
+        expect(r.efectos).toContainEqual({ tipo: 'cancelar-timer', nombre: 'sin-respuesta' });
+    });
+
+    it('un rechazo unico tambien acaba la llamada de inmediato', () => {
+        const ctx = llamandoA(['murcia']);
+        const r = transicion(ctx, { tipo: 'sede-rechazo', sede: 'murcia' });
+        expect(r.contexto.estado).toBe('inactivo');
+        expect(r.efectos).toContainEqual({ tipo: 'parar-ringback' });
+    });
+
+    it('un sin-respuesta remoto se comporta igual que un rechazo', () => {
+        const ctx = llamandoA(['murcia']);
+        const r = transicion(ctx, { tipo: 'sede-sin-respuesta', sede: 'murcia' });
+        expect(r.contexto.estado).toBe('inactivo');
+    });
+
+    it('una respuesta de una sede no invitada se ignora', () => {
+        const ctx = llamandoA(['murcia']);
+        const r = transicion(ctx, { tipo: 'sede-rechazo', sede: 'canarias' });
+        expect(r.contexto).toBe(ctx);
+    });
+
+    it('en llamada, el rechazo de una tercera sede solo se anota', () => {
+        const ctx = llamandoA(['murcia', 'canarias']);
+        const enLlamada = transicion(ctx, { tipo: 'sede-acepto', sede: 'murcia' }).contexto;
+        const r = transicion(enLlamada, { tipo: 'sede-rechazo', sede: 'canarias' });
+        expect(r.contexto.estado).toBe('en-llamada');
+        expect(r.contexto.estadosDestino['canarias']).toBe('rechazo');
+    });
+});
+
+describe('maquina de estados: timeout de union a Jitsi', () => {
+    const enLlamada = () => {
+        const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] }).contexto;
+        return transicion(llamando, { tipo: 'sede-acepto', sede: 'murcia' });
+    };
+
+    it('al entrar en llamada arranca el temporizador de 15 s (diseno §5.4)', () => {
+        expect(enLlamada().efectos).toContainEqual({
+            tipo: 'arrancar-timer', nombre: 'union-jitsi', ms: 15_000
+        });
+    });
+
+    it('crear-jitsi va ANTES que cualquier publicacion al aceptar', () => {
+        const rec = transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        }).contexto;
+        const efectos = transicion(rec, { tipo: 'aceptar' }).efectos;
+        const iCrear = efectos.findIndex(e => e.tipo === 'crear-jitsi');
+        const iPublicar = efectos.findIndex(e => e.tipo.startsWith('publicar-'));
+        expect(iCrear).toBeGreaterThanOrEqual(0);
+        expect(iPublicar).toBeGreaterThan(iCrear);
+    });
+
+    it('unirse cancela el temporizador', () => {
+        const ctx = enLlamada().contexto;
+        const r = transicion(ctx, { tipo: 'jitsi-unido' });
+        expect(r.efectos).toEqual([{ tipo: 'cancelar-timer', nombre: 'union-jitsi' }]);
+        expect(r.contexto.estado).toBe('en-llamada');
+    });
+
+    it('salir de la llamada cancela el temporizador de union', () => {
+        const ctx = enLlamada().contexto;
+        const r = transicion(ctx, { tipo: 'colgar' });
+        expect(r.efectos).toContainEqual({ tipo: 'cancelar-timer', nombre: 'union-jitsi' });
+    });
+});
+
+describe('maquina de estados: invitacion durante el selector', () => {
+    it('la invitacion expulsa al selector y pasa a recibiendo', () => {
+        const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
+        const r = transicion(sel, {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        });
+        expect(r.contexto.estado).toBe('recibiendo');
+        expect(r.contexto.origen).toBe('murcia');
+        expect(r.efectos).toContainEqual({ tipo: 'cancelar-timer', nombre: 'seleccion' });
+        expect(r.efectos).toContainEqual({ tipo: 'sonar-timbre' });
+        expect(r.efectos).toContainEqual({
+            tipo: 'arrancar-timer', nombre: 'sin-respuesta', ms: 45_000
+        });
+    });
+
+    it('y desde ahi se puede aceptar con normalidad', () => {
+        const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
+        const rec = transicion(sel, {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        }).contexto;
+        const r = transicion(rec, { tipo: 'aceptar' });
+        expect(r.contexto.estado).toBe('en-llamada');
+        expect(r.efectos).toContainEqual({ tipo: 'crear-jitsi', sala: 'spm-call-1' });
+    });
+});
