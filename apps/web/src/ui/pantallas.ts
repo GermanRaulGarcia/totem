@@ -1,4 +1,36 @@
-import type { Contexto, EstadoDestino, EstadoSede } from '../core/tipos';
+import type { Contexto, Estado, EstadoDestino, EstadoSede } from '../core/tipos';
+
+/**
+ * Que significa un toque sobre el DOM que pinta este modulo.
+ *
+ * Vive aqui, junto al marcado, y no en `main.ts`, porque enrutar es una
+ * propiedad de la estructura del DOM: quien decide que atributos lleva cada
+ * nodo tiene que ser tambien quien declare como se leen. Ademas asi es una
+ * funcion pura y se puede afirmar el ENRUTADO en un test en vez de afirmar
+ * atributos sueltos y confiar en que `main.ts` los interprete como se espera.
+ */
+export type Toque =
+    | { tipo: 'accion'; accion: string }
+    | { tipo: 'sede'; sede: string };
+
+/** Selector unico de delegacion de eventos. */
+const SELECTOR_TOQUE = '[data-accion], [data-sede]';
+
+export function enrutarToque(objetivo: EventTarget | null, estado: Estado): Toque | null {
+    const nodo = objetivo instanceof Element
+        ? objetivo.closest<HTMLElement>(SELECTOR_TOQUE)
+        : null;
+    if (nodo === null) return null;
+
+    // `data-sede` solo significa "elegir sede" mientras el selector esta abierto.
+    // En reposo la misma tarjeta lleva tambien `data-accion="despertar"` y es esa
+    // la lectura correcta.
+    const sede = nodo.dataset.sede;
+    if (sede !== undefined && estado === 'seleccionando') return { tipo: 'sede', sede };
+
+    const accion = nodo.dataset.accion;
+    return accion === undefined ? null : { tipo: 'accion', accion };
+}
 
 export interface Vista {
     contexto: Contexto;
@@ -54,13 +86,19 @@ function tarjetas(v: Vista, seleccionable: boolean): string {
         // En modo no seleccionable NO se usa `disabled`: un boton deshabilitado no
         // dispara click y ademas se traga el que iba dirigido a su contenedor, asi
         // que en reposo las tarjetas de sede (el objetivo mas grande y evidente de
-        // la pantalla) anulaban el "Toca para llamar" justo al pulsarlas. Con
-        // aria-disabled + pointer-events:none el toque atraviesa hasta la seccion y
-        // la semantica para lectores de pantalla se mantiene.
+        // la pantalla) anulaban el "Toca para llamar" justo al pulsarlas.
+        //
+        // La tarjeta inerte lleva ademas `data-accion="despertar"`, el mismo de la
+        // seccion. El `pointer-events: none` de `.sede--inerte` ya hacia que el
+        // toque atravesara, pero eso dejaba la correccion entera en manos de la
+        // hoja de estilos: si el CSS no cargara, el objetivo mas grande de la
+        // pantalla volveria a tragarse el toque. Con el atributo, el enrutado
+        // funciona por estructura del DOM y el CSS solo es defensa en profundidad.
         const inerte = !seleccionable;
         const bloqueado = seleccionable && !s.online;
         return `
         <button class="${claseSede(s)}${inerte ? ' sede--inerte' : ''}" data-sede="${escapar(s.sede)}"
+                ${inerte ? 'data-accion="despertar"' : ''}
                 ${bloqueado ? 'disabled' : ''}
                 ${inerte || bloqueado ? 'aria-disabled="true"' : ''}
                 ${v.seleccion.includes(s.sede) ? 'data-elegida="si"' : ''}>

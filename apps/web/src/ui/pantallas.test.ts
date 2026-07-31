@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, escapar, type Vista } from './pantallas';
+import { render, escapar, enrutarToque, type Vista } from './pantallas';
 import { contextoEn } from '../core/maquina-estados';
 import type { EstadoSede } from '../core/tipos';
 
@@ -135,14 +135,34 @@ describe('pantallas', () => {
         expect(raiz.querySelector('.sede__nombre')!.textContent).toBe("O'Donnell & <Co>");
     });
 
-    it('en reposo las tarjetas no se tragan el toque que despierta la pantalla', () => {
-        // Un <button disabled> no dispara click NI deja que burbujee: tocar la
-        // tarjeta de sede (el objetivo mas grande de la pantalla) no hacia nada.
+    it('en reposo tocar una tarjeta de sede despierta la pantalla', () => {
+        // Se afirma el ENRUTADO, no los atributos: la correccion anterior dependia
+        // por completo de `pointer-events: none` en el CSS, asi que si la hoja de
+        // estilos no cargaba, el objetivo mas grande de la pantalla volvia a
+        // tragarse el toque y este test seguia en verde.
         render(raiz, vista({ sedes: [sede('murcia', true)] }));
         const tarjeta = raiz.querySelector<HTMLButtonElement>('[data-sede="murcia"]')!;
+        expect(enrutarToque(tarjeta, 'inactivo')).toEqual({ tipo: 'accion', accion: 'despertar' });
+        // Y sigue sin usarse `disabled`, que no dispararia click en absoluto.
         expect(tarjeta.disabled).toBe(false);
-        expect(tarjeta.getAttribute('aria-disabled')).toBe('true');
-        expect(tarjeta.classList.contains('sede--inerte')).toBe(true);
+    });
+
+    it('en reposo tocar el fondo tambien despierta la pantalla', () => {
+        render(raiz, vista({}));
+        const fondo = raiz.querySelector('.invitacion')!;
+        expect(enrutarToque(fondo, 'inactivo')).toEqual({ tipo: 'accion', accion: 'despertar' });
+    });
+
+    it('la MISMA tarjeta, con el selector abierto, elige sede en vez de despertar', () => {
+        render(raiz, vista({ contexto: contextoEn('seleccionando') }));
+        const tarjeta = raiz.querySelector<HTMLButtonElement>('[data-sede="murcia"]')!;
+        expect(enrutarToque(tarjeta, 'seleccionando')).toEqual({ tipo: 'sede', sede: 'murcia' });
+    });
+
+    it('un toque fuera de cualquier objetivo no enruta nada', () => {
+        render(raiz, vista({}));
+        expect(enrutarToque(raiz, 'inactivo')).toBeNull();
+        expect(enrutarToque(null, 'inactivo')).toBeNull();
     });
 
     it('en reposo repintar el reloj no reconstruye el subarbol', () => {

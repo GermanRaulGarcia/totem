@@ -3,7 +3,7 @@ import { ClienteMqtt } from './mqtt/cliente-mqtt';
 import { SesionJitsi, type ApiJitsi } from './jitsi/sesion-jitsi';
 import type { Sonidos, Temporizadores } from './runtime/interprete';
 import { Totem } from './runtime/totem';
-import { render } from './ui/pantallas';
+import { enrutarToque, render } from './ui/pantallas';
 
 const params = new URLSearchParams(location.search);
 const SEDE = params.get('sede') ?? 'lorca';
@@ -113,16 +113,11 @@ const totem = new Totem({
 });
 
 raiz.addEventListener('click', ev => {
-    const objetivo = (ev.target as HTMLElement).closest<HTMLElement>('[data-accion], [data-sede]');
-    if (objetivo === null) return;
+    const toque = enrutarToque(ev.target, totem.contexto.estado);
+    if (toque === null) return;
+    if (toque.tipo === 'sede') { totem.alternarSeleccion(toque.sede); return; }
 
-    const sede = objetivo.dataset.sede;
-    if (sede !== undefined && totem.contexto.estado === 'seleccionando') {
-        totem.alternarSeleccion(sede);
-        return;
-    }
-
-    switch (objetivo.dataset.accion) {
+    switch (toque.accion) {
         case 'despertar': totem.emitir({ tipo: 'toque-pantalla' }); break;
         case 'llamar':
             totem.emitir({ tipo: 'seleccion-confirmada', destinos: [...totem.seleccion] });

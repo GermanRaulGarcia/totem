@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Interprete } from './interprete';
-import type { Efecto } from '../core/tipos';
+import type { Efecto, Evento } from '../core/tipos';
 
 /** Promesa que se resuelve cuando el test quiere, para fijar el orden real. */
 function diferida(): { promesa: Promise<void>; resolver: () => void } {
@@ -27,11 +27,12 @@ function dobles() {
     };
     const timers = { arrancar: vi.fn(), cancelar: vi.fn() };
     const perdidas: string[] = [];
+    const emitidos: Evento[] = [];
     const interprete = new Interprete(
         mqtt as never, jitsi as never, sonidos, timers,
-        'lorca', o => { perdidas.push(o); }, () => {}
+        'lorca', o => { perdidas.push(o); }, e => { emitidos.push(e); }
     );
-    return { mqtt, jitsi, sonidos, timers, perdidas, interprete };
+    return { mqtt, jitsi, sonidos, timers, perdidas, emitidos, interprete };
 }
 
 describe('Interprete', () => {
@@ -54,10 +55,27 @@ describe('Interprete', () => {
         expect(d.jitsi.crear).toHaveBeenCalledWith('spm-c1');
     });
 
-    it('destruye la sesion de Jitsi', async () => {
+    it('destruye la sesion de Jitsi y declara el teardown completo', async () => {
         const d = dobles();
         await d.interprete.ejecutar([{ tipo: 'destruir-jitsi' }]);
         expect(d.jitsi.destruir).toHaveBeenCalledTimes(1);
+        expect(d.emitidos).toEqual([{ tipo: 'teardown-completo' }]);
+    });
+
+    it('un dispose() que lanza NO deja la maquina atrapada en finalizando', async () => {
+        // `teardown-completo` es la unica arista de salida de `finalizando`, y este
+        // switch corre dentro del try/catch que aisla cada efecto. Emitiendolo solo
+        // en la via de exito, una excepcion de `dispose()` desaparecia en el log y
+        // el totem se quedaba con "Finalizando..." en pantalla para siempre.
+        const d = dobles();
+        const traza = vi.spyOn(console, 'error').mockImplementation(() => {});
+        d.jitsi.destruir.mockImplementation(() => { throw new Error('dispose reventado'); });
+
+        await d.interprete.ejecutar([{ tipo: 'destruir-jitsi' }]);
+
+        expect(d.emitidos).toEqual([{ tipo: 'teardown-completo' }]);
+        expect(traza).toHaveBeenCalled();
+        traza.mockRestore();
     });
 
     it('registra una llamada perdida', async () => {

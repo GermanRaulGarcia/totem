@@ -46,8 +46,12 @@ test('una llamada de Lorca a Murcia se establece y se cuelga', async ({ browser 
     // Lorca ve a Murcia disponible.
     await expect(lorca.locator('[data-sede="murcia"]')).toContainText('Disponible');
 
-    // Lorca llama a Murcia.
-    await lorca.locator('[data-accion="despertar"]').click();
+    // Lorca llama a Murcia. El primer toque va sobre la TARJETA de sede, que es el
+    // objetivo mas grande de la pantalla de reposo: antes se tragaba el toque y no
+    // pasaba nada. Ahora la propia tarjeta inerte lleva `data-accion="despertar"`,
+    // asi que el enrutado no depende de que cargue la hoja de estilos.
+    await lorca.locator('[data-sede="murcia"]').click();
+    await expect(lorca.locator('.pantalla--seleccion')).toBeVisible();
     await lorca.locator('[data-sede="murcia"]').click();
     await lorca.locator('[data-accion="llamar"]').click();
     await expect(lorca.locator('.pantalla--llamando')).toBeVisible();

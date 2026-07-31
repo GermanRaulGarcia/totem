@@ -89,9 +89,22 @@ export class Interprete {
                 this.jitsi.crear(efecto.sala);
                 return;
 
+            // El `finally` NO es cosmetico. `teardown-completo` es la unica arista
+            // de salida de `finalizando`, y este switch corre dentro del try/catch
+            // de `ejecutarLote`, que se traga los errores. Emitiendolo solo en la
+            // via de exito, un `dispose()` que lanzara dejaba la maquina en
+            // `finalizando` para siempre: pantalla de "Finalizando..." congelada en
+            // un kiosco desatendido, recuperable solo recargando. Declararlo
+            // completo pase lo que pase es correcto ademas por construccion:
+            // `SesionJitsi.destruir()` suelta su referencia ANTES de llamar a
+            // `dispose()`, asi que al volver de aqui la sesion ya no existe para
+            // este proceso, haya lanzado o no.
             case 'destruir-jitsi':
-                this.jitsi.destruir();
-                this.emitir({ tipo: 'teardown-completo' });
+                try {
+                    this.jitsi.destruir();
+                } finally {
+                    this.emitir({ tipo: 'teardown-completo' });
+                }
                 return;
 
             case 'sonar-timbre': this.sonidos.sonarTimbre(); return;
