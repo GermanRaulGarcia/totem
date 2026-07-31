@@ -53,7 +53,11 @@ html, body {
     transition: transform 120ms ease, opacity 120ms ease;
 }
 
-.sede:active:not([disabled]) { transform: scale(0.96); }
+.sede:active:not([disabled]):not(.sede--inerte) { transform: scale(0.96); }
+
+/* Tarjeta puramente informativa (reposo y llamando): el toque la atraviesa y
+   llega al contenedor, que es quien despierta la pantalla. Ver `tarjetas()`. */
+.sede--inerte { pointer-events: none; }
 .sede[data-elegida="si"] { border-color: var(--acento); }
 .sede--libre .sede__estado { color: var(--verde); }
 .sede--ocupada .sede__estado { color: var(--ambar); }
@@ -97,3 +101,9 @@ html, body {
 .controles { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); display: flex; gap: 1rem; z-index: 10; }
 .control { min-height: 120px; min-width: 120px; border: none; border-radius: 50%; background: var(--superficie); color: var(--texto); font-size: 1rem; }
 .control--colgar { background: var(--rojo); }
+.control--inactivo { background: var(--ambar); color: #14202f; }
+
+.destino__estado[data-estado="acepto"] { color: var(--verde); }
+.destino__estado[data-estado="rechazo"],
+.destino__estado[data-estado="colgo"] { color: var(--rojo); }
+.destino__estado[data-estado="sin-respuesta"] { color: var(--ambar); }

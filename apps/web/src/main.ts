@@ -1,8 +1,8 @@
-import { contextoInicial, transicion } from './core/maquina-estados';
-import type { Contexto, Evento, EstadoSede, NombreTimer } from './core/tipos';
+import type { NombreTimer } from './core/tipos';
 import { ClienteMqtt } from './mqtt/cliente-mqtt';
 import { SesionJitsi, type ApiJitsi } from './jitsi/sesion-jitsi';
-import { Interprete, type Sonidos, type Temporizadores } from './runtime/interprete';
+import type { Sonidos, Temporizadores } from './runtime/interprete';
+import { Totem } from './runtime/totem';
 import { render } from './ui/pantallas';
 
 const params = new URLSearchParams(location.search);
@@ -11,16 +11,21 @@ const NOMBRE = params.get('nombre') ?? SEDE;
 const URL_BROKER = params.get('broker') ?? `wss://${location.host}/mqtt`;
 const HOST_JITSI = params.get('jitsi') ?? 'meet.sunube.net';
 
+// Credencial MQTT por sede, entregada al kiosco como parametros de la URL de
+// arranque, junto a ?sede= (ver infra/README.md). Mosquitto tiene
+// allow_anonymous false y ACLs por usuario, asi que sin esto el broker responde
+// CONNACK 5 a los tres totems y no arranca ninguno.
+//
+// Y NO, esto no hay que "endurecerlo": quien pueda leer la credencial de un
+// kiosco ya tiene acceso fisico a ese totem y puede suplantar a esa sede de mil
+// formas mas comodas. Lo que protegen las ACLs por sede -que una sede
+// comprometida no pueda falsificar la presencia de OTRA- no depende de donde
+// viva la credencial de esta. Un flujo de tokens aqui solo anadiria una pieza
+// mas que se puede caer al arrancar, a cambio de cero seguridad real.
+const USUARIO = params.get('usuario') ?? undefined;
+const CONTRASENA = params.get('contrasena') ?? undefined;
+
 const raiz = document.getElementById('app')!;
-let contexto: Contexto = contextoInicial();
-let sedes: EstadoSede[] = [];
-let seleccion: string[] = [];
-
-const reloj = () => new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-
-function pintar(): void {
-    render(raiz, { contexto, sedes, seleccion, reloj: reloj() });
-}
 
 const timers: Temporizadores = (() => {
     const activos = new Map<NombreTimer, number>();
@@ -58,7 +63,10 @@ const sonidos: Sonidos = (() => {
     };
 })();
 
-const mqtt = new ClienteMqtt({ url: URL_BROKER, sede: SEDE, nombre: NOMBRE });
+const mqtt = new ClienteMqtt({
+    url: URL_BROKER, sede: SEDE, nombre: NOMBRE,
+    usuario: USUARIO, contrasena: CONTRASENA
+});
 
 const fabricaJitsi = (sala: string, contenedor: HTMLElement, displayName: string): ApiJitsi => {
     const Api = (window as unknown as { JitsiMeetExternalAPI: new (h: string, o: unknown) => ApiJitsi })
@@ -76,36 +84,32 @@ const fabricaJitsi = (sala: string, contenedor: HTMLElement, displayName: string
     });
 };
 
-const jitsi = new SesionJitsi(fabricaJitsi, raiz, NOMBRE);
-
-function emitir(evento: Evento): void {
-    const resultado = transicion(contexto, evento);
-    const cambio = resultado.contexto !== contexto;
-    contexto = resultado.contexto;
-    if (cambio) seleccion = [];
-    pintar();
-    void interprete.ejecutar(resultado.efectos);
-}
-
-const interprete = new Interprete(
-    mqtt, jitsi, sonidos, timers, SEDE,
-    origen => console.warn('llamada perdida de', origen),
-    emitir
+// El contenedor se resuelve en cada llamada, no aqui: `#jitsi` solo existe
+// mientras esta pintada la pantalla de llamada. Pasar `raiz` colgaba el iframe
+// como hermano de una seccion de 100dvh, es decir, fuera de pantalla.
+const jitsi = new SesionJitsi(
+    fabricaJitsi,
+    () => raiz.querySelector<HTMLElement>('#jitsi'),
+    NOMBRE
 );
 
-jitsi.alFallar(() => emitir({ tipo: 'jitsi-fallo' }));
+const reloj = () => new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
-mqtt.alConectar(() => emitir({ tipo: 'broker-conectado' }));
-mqtt.alDesconectar(() => emitir({ tipo: 'broker-desconectado' }));
-mqtt.alCambiarEstadoSede(estado => {
-    if (estado.sede === SEDE) return;
-    sedes = [...sedes.filter(s => s.sede !== estado.sede), estado]
-        .sort((a, b) => a.sede.localeCompare(b.sede));
-    pintar();
-});
-mqtt.alRecibirInvitacion(invitacion => emitir({ tipo: 'invitacion-recibida', invitacion }));
-mqtt.alRecibirEventoLlamada(evento => {
-    if (evento.tipo === 'acepta') emitir({ tipo: 'sede-acepto', sede: evento.sede });
+function pintar(): void {
+    render(raiz, {
+        contexto: totem.contexto,
+        sedes: totem.sedes(),
+        seleccion: totem.seleccion,
+        reloj: reloj(),
+        microSilenciado: jitsi.silenciado,
+        camaraApagada: jitsi.camaraOculta
+    });
+}
+
+const totem = new Totem({
+    mqtt, jitsi, sonidos, timers, sede: SEDE,
+    alCambiar: pintar,
+    registrarPerdida: origen => console.warn('llamada perdida de', origen)
 });
 
 raiz.addEventListener('click', ev => {
@@ -113,28 +117,36 @@ raiz.addEventListener('click', ev => {
     if (objetivo === null) return;
 
     const sede = objetivo.dataset.sede;
-    if (sede !== undefined && contexto.estado === 'seleccionando') {
-        seleccion = seleccion.includes(sede)
-            ? seleccion.filter(s => s !== sede)
-            : [...seleccion, sede];
-        pintar();
+    if (sede !== undefined && totem.contexto.estado === 'seleccionando') {
+        totem.alternarSeleccion(sede);
         return;
     }
 
     switch (objetivo.dataset.accion) {
-        case 'despertar': emitir({ tipo: 'toque-pantalla' }); break;
-        case 'llamar': {
-            const destinos = [...seleccion];
-            emitir({ tipo: 'seleccion-confirmada', destinos });
+        case 'despertar': totem.emitir({ tipo: 'toque-pantalla' }); break;
+        case 'llamar':
+            totem.emitir({ tipo: 'seleccion-confirmada', destinos: [...totem.seleccion] });
             break;
-        }
-        case 'cancelar': emitir({ tipo: 'cancelar' }); break;
-        case 'aceptar': emitir({ tipo: 'aceptar' }); break;
-        case 'rechazar': emitir({ tipo: 'rechazar' }); break;
-        case 'colgar': emitir({ tipo: 'colgar' }); break;
+        case 'cancelar': totem.emitir({ tipo: 'cancelar' }); break;
+        case 'aceptar': totem.emitir({ tipo: 'aceptar' }); break;
+        case 'rechazar': totem.emitir({ tipo: 'rechazar' }); break;
+        case 'colgar': totem.emitir({ tipo: 'colgar' }); break;
+        // Nunca alternan a ciegas: SesionJitsi lleva el estado real que reporta
+        // Jitsi y declara el destino contrario. Pulsar dos veces no descuadra nada.
+        case 'micro': jitsi.alternarMicro(); pintar(); break;
+        case 'camara': jitsi.alternarCamara(); pintar(); break;
     }
 });
 
-setInterval(pintar, 30_000);
+// Un reloj de 12rem con un tick de 30 s ensena el minuto equivocado la mitad del
+// tiempo. En reposo el repintado solo toca el textContent, asi que cada segundo
+// es barato y ademas no reinicia la animacion anti burn-in.
+setInterval(pintar, 1_000);
 pintar();
-void mqtt.conectar();
+totem.arrancar();
+
+// 'pagehide' es el ultimo momento fiable para despedirse en un navegador
+// ('unload' ya no lo garantiza Chrome). Sin esto la retraccion de presencia no
+// llegaba a ejecutarse nunca, y el reinicio nocturno programado dejaba la sede
+// marcada como viva hasta que el broker diera el socket por muerto.
+addEventListener('pagehide', () => { void totem.parar(); });

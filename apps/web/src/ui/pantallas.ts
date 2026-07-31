@@ -1,10 +1,12 @@
-import type { Contexto, EstadoSede } from '../core/tipos';
+import type { Contexto, EstadoDestino, EstadoSede } from '../core/tipos';
 
 export interface Vista {
     contexto: Contexto;
     sedes: EstadoSede[];
     seleccion: string[];
     reloj: string;
+    microSilenciado: boolean;
+    camaraApagada: boolean;
 }
 
 function claseSede(s: EstadoSede): string {
@@ -18,27 +20,78 @@ function claseSede(s: EstadoSede): string {
 // una sede con credenciales validas podria inyectar HTML/JS en la pantalla
 // de todos los demas totems, que son kiosks desatendidos con permisos de
 // camara y microfono ya concedidos.
-function escapar(texto: string): string {
+// Exportada solo para poder fijar el contrato en un test: al leer innerHTML,
+// jsdom (y los navegadores) vuelven a serializar `&#39;` como `'`, asi que desde
+// el DOM es imposible distinguir "escapado" de "no escapado".
+export function escapar(texto: string): string {
     return texto
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        // Tambien la comilla simple: hoy todos los atributos de estas plantillas
+        // usan comillas dobles, pero eso es una propiedad del codigo actual, no una
+        // garantia. Un solo atributo escrito con comillas simples reabriria el
+        // agujero sin que nada avisara.
+        .replace(/'/g, '&#39;');
 }
 
+/** Nombre legible de una sede a partir de su id, con el id como ultimo recurso. */
+function nombreDe(v: Vista, id: string): string {
+    return v.sedes.find(s => s.sede === id)?.nombre ?? id;
+}
+
+const TEXTO_DESTINO: Record<EstadoDestino, string> = {
+    'sonando': 'Sonando...',
+    'acepto': 'Acepto',
+    'rechazo': 'Rechazo',
+    'sin-respuesta': 'Sin respuesta',
+    'colgo': 'Colgo'
+};
+
 function tarjetas(v: Vista, seleccionable: boolean): string {
-    return v.sedes.map(s => `
-        <button class="${claseSede(s)}" data-sede="${escapar(s.sede)}"
-                ${seleccionable && s.online ? '' : 'disabled'}
+    return v.sedes.map(s => {
+        // En modo no seleccionable NO se usa `disabled`: un boton deshabilitado no
+        // dispara click y ademas se traga el que iba dirigido a su contenedor, asi
+        // que en reposo las tarjetas de sede (el objetivo mas grande y evidente de
+        // la pantalla) anulaban el "Toca para llamar" justo al pulsarlas. Con
+        // aria-disabled + pointer-events:none el toque atraviesa hasta la seccion y
+        // la semantica para lectores de pantalla se mantiene.
+        const inerte = !seleccionable;
+        const bloqueado = seleccionable && !s.online;
+        return `
+        <button class="${claseSede(s)}${inerte ? ' sede--inerte' : ''}" data-sede="${escapar(s.sede)}"
+                ${bloqueado ? 'disabled' : ''}
+                ${inerte || bloqueado ? 'aria-disabled="true"' : ''}
                 ${v.seleccion.includes(s.sede) ? 'data-elegida="si"' : ''}>
             <span class="sede__nombre">${escapar(s.nombre)}</span>
             <span class="sede__estado">${s.online
                 ? (s.disponibilidad === 'ocupado' ? 'En llamada' : 'Disponible')
                 : 'Sin conexion'}</span>
-        </button>`).join('');
+        </button>`;
+    }).join('');
 }
 
+/** Diseno §6: la pantalla `llamando` muestra el estado en vivo de cada sede. */
+function destinos(v: Vista): string {
+    return v.contexto.destinos.map(id => {
+        const estado = v.contexto.estadosDestino[id] ?? 'sonando';
+        return `
+        <div class="sede sede--inerte destino" data-destino="${escapar(id)}">
+            <span class="sede__nombre">${escapar(nombreDe(v, id))}</span>
+            <span class="sede__estado destino__estado" data-estado="${estado}">${
+                escapar(TEXTO_DESTINO[estado])
+            }</span>
+        </div>`;
+    }).join('');
+}
+
+// Firma del contenido de la pantalla de reposo. Ver el comentario en `render`.
+let firmaReposo: string | null = null;
+
 export function render(raiz: HTMLElement, v: Vista): void {
+    if (v.contexto.estado !== 'inactivo') firmaReposo = null;
+
     // El contenedor de video se conserva entre renders: destruirlo mataria el iframe.
     if (v.contexto.estado === 'en-llamada') {
         if (raiz.querySelector('#jitsi') === null) {
@@ -51,6 +104,19 @@ export function render(raiz: HTMLElement, v: Vista): void {
                         <button data-accion="colgar" class="control control--colgar">Colgar</button>
                     </nav>
                 </section>`;
+        }
+        // Los controles reflejan el estado REAL que reporta Jitsi, no una suposicion.
+        const micro = raiz.querySelector<HTMLElement>('[data-accion="micro"]');
+        if (micro !== null) {
+            micro.textContent = v.microSilenciado ? 'Micro off' : 'Micro';
+            micro.setAttribute('aria-pressed', String(v.microSilenciado));
+            micro.classList.toggle('control--inactivo', v.microSilenciado);
+        }
+        const camara = raiz.querySelector<HTMLElement>('[data-accion="camara"]');
+        if (camara !== null) {
+            camara.textContent = v.camaraApagada ? 'Camara off' : 'Camara';
+            camara.setAttribute('aria-pressed', String(v.camaraApagada));
+            camara.classList.toggle('control--inactivo', v.camaraApagada);
         }
         return;
     }
@@ -68,14 +134,29 @@ export function render(raiz: HTMLElement, v: Vista): void {
                 </section>`;
             return;
 
-        case 'inactivo':
+        case 'inactivo': {
+            // El reloj se repinta cada segundo, pero reescribir innerHTML reiniciaria
+            // la animacion `deriva` de 120 s desde el 0 % en cada repintado: la
+            // prevencion de burn-in (§6.1) nunca llegaria a desplazar nada en un
+            // panel encendido de forma permanente. Mientras el resto del contenido
+            // no cambie, solo se toca el textContent del reloj.
+            const firma = JSON.stringify(
+                v.sedes.map(s => [s.sede, s.nombre, s.online, s.disponibilidad])
+            );
+            const marcador = raiz.querySelector<HTMLElement>('.pantalla--reposo .reloj');
+            if (marcador !== null && firma === firmaReposo) {
+                marcador.textContent = v.reloj;
+                return;
+            }
+            firmaReposo = firma;
             raiz.innerHTML = `
                 <section class="pantalla pantalla--reposo" data-accion="despertar">
-                    <p class="reloj">${v.reloj}</p>
+                    <p class="reloj">${escapar(v.reloj)}</p>
                     <div class="sedes">${tarjetas(v, false)}</div>
                     <p class="invitacion">Toca para llamar</p>
                 </section>`;
             return;
+        }
 
         case 'seleccionando':
             raiz.innerHTML = `
@@ -94,7 +175,7 @@ export function render(raiz: HTMLElement, v: Vista): void {
             raiz.innerHTML = `
                 <section class="pantalla pantalla--llamando">
                     <h1 class="titulo">Llamando...</h1>
-                    <div class="sedes">${tarjetas(v, false)}</div>
+                    <div class="sedes">${destinos(v)}</div>
                     <button data-accion="cancelar" class="boton boton--colgar">Cancelar</button>
                 </section>`;
             return;
@@ -103,7 +184,11 @@ export function render(raiz: HTMLElement, v: Vista): void {
             raiz.innerHTML = `
                 <section class="pantalla pantalla--entrante">
                     <p class="pulso"></p>
-                    <h1 class="titulo">${escapar(v.contexto.origen ?? 'Sede desconocida')}</h1>
+                    <h1 class="titulo">${escapar(
+                        v.contexto.origen === null
+                            ? 'Sede desconocida'
+                            : nombreDe(v, v.contexto.origen)
+                    )}</h1>
                     <p class="mensaje">te esta llamando</p>
                     <nav class="acciones">
                         <button data-accion="rechazar" class="boton boton--colgar">Rechazar</button>
