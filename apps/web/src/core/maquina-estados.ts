@@ -2,7 +2,7 @@ import {
     MS_TIMEOUT_SELECCION,
     MS_TIMEOUT_SIN_RESPUESTA,
     MS_TIMEOUT_UNION_JITSI,
-    type Contexto, type Efecto, type Estado, type EstadoDestino, type Evento, type Resultado
+    type Contexto, type Efecto, type Estado, type Evento, type Resultado
 } from './tipos';
 
 export function contextoInicial(): Contexto {
@@ -12,9 +12,8 @@ export function contextoInicial(): Contexto {
         callId: null,
         sala: null,
         origen: null,
-        destinos: [],
-        aceptadas: [],
-        estadosDestino: {}
+        destino: null,
+        par: null
     };
 }
 
@@ -43,9 +42,8 @@ function irAInactivo(ctx: Contexto, efectosPrevios: Efecto[] = []): Resultado {
             callId: null,
             sala: null,
             origen: null,
-            destinos: [],
-            aceptadas: [],
-            estadosDestino: {}
+            destino: null,
+            par: null
         },
         efectos: [
             ...efectosPrevios,
@@ -83,13 +81,6 @@ function efectosEntrarEnLlamada(sala: string): Efecto[] {
         { tipo: 'crear-jitsi', sala },
         { tipo: 'arrancar-timer', nombre: 'union-jitsi', ms: MS_TIMEOUT_UNION_JITSI }
     ];
-}
-
-/** Marca el estado de una sede invitada sin mutar el contexto recibido. */
-function marcar(
-    ctx: Contexto, sede: string, estado: EstadoDestino
-): Record<string, EstadoDestino> {
-    return { ...ctx.estadosDestino, [sede]: estado };
 }
 
 export function transicion(ctx: Contexto, evento: Evento): Resultado {
@@ -159,24 +150,23 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
                     ]
                 };
             }
+            // Un destino, no una lista: negocio retiro la llamada multi-sede el
+            // 2026-07-31. La eleccion de A QUE sede se llama se mantiene intacta.
             if (evento.tipo === 'seleccion-confirmada') {
                 const callId = generarCallId();
                 const sala = `spm-${callId}`;
-                const estadosDestino: Record<string, EstadoDestino> = {};
-                for (const destino of evento.destinos) estadosDestino[destino] = 'sonando';
                 return {
                     contexto: {
                         ...ctx,
                         estado: 'llamando',
                         callId,
                         sala,
-                        destinos: evento.destinos,
-                        aceptadas: [],
-                        estadosDestino
+                        destino: evento.destino,
+                        par: null
                     },
                     efectos: [
                         { tipo: 'cancelar-timer', nombre: 'seleccion' },
-                        { tipo: 'publicar-invitaciones', callId, sala, destinos: evento.destinos },
+                        { tipo: 'publicar-invitacion', callId, sala, destino: evento.destino },
                         { tipo: 'publicar-estado', disponibilidad: 'ocupado', callId },
                         { tipo: 'sonar-ringback' },
                         { tipo: 'arrancar-timer', nombre: 'sin-respuesta', ms: MS_TIMEOUT_SIN_RESPUESTA }
@@ -187,14 +177,14 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
         }
 
         case 'llamando': {
+            // Solo el destino de ESTA llamada puede contestarla. El filtro por
+            // callId de `totem.ts` ya descarta las llamadas ajenas, pero eso no
+            // cubre a una sede que publique sobre nuestro callId sin haber sido
+            // invitada: con llamadas 1 a 1 eso seria colar a un tercero.
             if (evento.tipo === 'sede-acepto') {
+                if (evento.sede !== ctx.destino) return sinCambios(ctx);
                 return {
-                    contexto: {
-                        ...ctx,
-                        estado: 'en-llamada',
-                        aceptadas: [evento.sede],
-                        estadosDestino: marcar(ctx, evento.sede, 'acepto')
-                    },
+                    contexto: { ...ctx, estado: 'en-llamada', par: evento.sede },
                     efectos: [
                         { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
                         { tipo: 'parar-ringback' },
@@ -202,20 +192,12 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
                     ]
                 };
             }
-            // Una sede que rechaza o no contesta deja de sonar. Si TODAS han
-            // contestado que no, la llamada se acaba ya: sin esto, el llamante
-            // seguia oyendo el ringback los 45 s completos tras un rechazo inmediato.
+            // Si el unico destino dice que no, la llamada se acaba ya: sin esto el
+            // llamante seguia oyendo el ringback los 45 s completos tras un
+            // rechazo inmediato.
             if (evento.tipo === 'sede-rechazo' || evento.tipo === 'sede-sin-respuesta') {
-                if (!ctx.destinos.includes(evento.sede)) return sinCambios(ctx);
-                const estadosDestino = marcar(
-                    ctx, evento.sede,
-                    evento.tipo === 'sede-rechazo' ? 'rechazo' : 'sin-respuesta'
-                );
-                const sigueSonandoAlguna = ctx.destinos.some(d => estadosDestino[d] === 'sonando');
-                if (sigueSonandoAlguna) {
-                    return { contexto: { ...ctx, estadosDestino }, efectos: [] };
-                }
-                return irAInactivo({ ...ctx, estadosDestino }, [
+                if (evento.sede !== ctx.destino) return sinCambios(ctx);
+                return irAInactivo(ctx, [
                     { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
                     { tipo: 'parar-ringback' },
                     { tipo: 'publicar-evento-llamada', callId: ctx.callId!, evento: 'cuelga' }
@@ -238,12 +220,7 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
             ];
             if (evento.tipo === 'aceptar') {
                 return {
-                    contexto: {
-                        ...ctx,
-                        estado: 'en-llamada',
-                        aceptadas: [ctx.origen!],
-                        estadosDestino: marcar(ctx, ctx.origen!, 'acepto')
-                    },
+                    contexto: { ...ctx, estado: 'en-llamada', par: ctx.origen },
                     efectos: [
                         ...comunes,
                         ...efectosEntrarEnLlamada(ctx.sala!),
@@ -291,43 +268,20 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
                     ]
                 };
             }
-            if (evento.tipo === 'sede-acepto') {
-                if (ctx.aceptadas.includes(evento.sede)) return sinCambios(ctx);
-                return {
-                    contexto: {
-                        ...ctx,
-                        aceptadas: [...ctx.aceptadas, evento.sede],
-                        estadosDestino: marcar(ctx, evento.sede, 'acepto')
-                    },
-                    efectos: []
-                };
-            }
-            if (evento.tipo === 'sede-rechazo' || evento.tipo === 'sede-sin-respuesta') {
-                if (!ctx.destinos.includes(evento.sede)) return sinCambios(ctx);
-                return {
-                    contexto: {
-                        ...ctx,
-                        estadosDestino: marcar(
-                            ctx, evento.sede,
-                            evento.tipo === 'sede-rechazo' ? 'rechazo' : 'sin-respuesta'
-                        )
-                    },
-                    efectos: []
-                };
-            }
+            // Aqui NO se contemplan `sede-acepto`, `sede-rechazo` ni
+            // `sede-sin-respuesta`. Con llamadas 1 a 1 solo hay un invitado y ya
+            // ha contestado: cualquier otra respuesta es un duplicado del broker o
+            // una sede que no pinta nada en esta llamada. En ambos casos, no hacer
+            // nada es la respuesta correcta.
+
             // Diseno §5.2: se sale de `en-llamada` al colgar "o se queda solo".
-            // Esta es la segunda mitad: si el ultimo acompañante cuelga, esta sede
-            // se queda sola en la sala. Sin esto el iframe sobrevive a la llamada
-            // en una sala vacia para siempre, que es exactamente el fallo del
-            // sistema antiguo que este proyecto existe para eliminar.
+            // Esta es la segunda mitad: si el par cuelga, esta sede se queda sola
+            // en la sala. Sin esto el iframe sobrevive a la llamada en una sala
+            // vacia para siempre, que es exactamente el fallo del sistema antiguo
+            // que este proyecto existe para eliminar.
             if (evento.tipo === 'sede-colgo') {
-                if (!ctx.aceptadas.includes(evento.sede)) return sinCambios(ctx);
-                const aceptadas = ctx.aceptadas.filter(s => s !== evento.sede);
-                const estadosDestino = marcar(ctx, evento.sede, 'colgo');
-                if (aceptadas.length > 0) {
-                    return { contexto: { ...ctx, aceptadas, estadosDestino }, efectos: [] };
-                }
-                return irAFinalizando(ctx, { aceptadas, estadosDestino });
+                if (evento.sede !== ctx.par) return sinCambios(ctx);
+                return irAFinalizando(ctx, { par: null });
             }
             if (evento.tipo === 'jitsi-unido') {
                 return {

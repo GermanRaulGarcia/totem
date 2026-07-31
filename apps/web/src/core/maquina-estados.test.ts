@@ -69,52 +69,56 @@ describe('maquina de estados: llamada saliente', () => {
         expect(r.contexto.estado).toBe('inactivo');
     });
 
-    it('confirmar la seleccion publica las invitaciones', () => {
+    it('confirmar la seleccion publica UNA invitacion al unico destino', () => {
         const sel = transicion(inactivo(), { tipo: 'toque-pantalla' }).contexto;
-        const r = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia', 'canarias'] });
+        const r = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' });
         expect(r.contexto.estado).toBe('llamando');
-        const inv = r.efectos.find(e => e.tipo === 'publicar-invitaciones');
-        expect(inv).toBeDefined();
-        expect(inv).toMatchObject({ destinos: ['murcia', 'canarias'] });
+        expect(r.contexto.destino).toBe('murcia');
+        const invitaciones = r.efectos.filter(e => e.tipo === 'publicar-invitacion');
+        expect(invitaciones).toHaveLength(1);
+        expect(invitaciones[0]).toMatchObject({ destino: 'murcia', sala: r.contexto.sala! });
     });
 
     it('NO crea el iframe de Jitsi mientras esta llamando', () => {
         const sel = transicion(inactivo(), { tipo: 'toque-pantalla' }).contexto;
-        const r = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] });
+        const r = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' });
         expect(r.efectos.some(e => e.tipo === 'crear-jitsi')).toBe(false);
     });
 
     it('suena el ringback y arranca el timeout de 45 s al llamar', () => {
         const sel = transicion(inactivo(), { tipo: 'toque-pantalla' }).contexto;
-        const r = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] });
+        const r = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' });
         expect(r.efectos).toContainEqual({ tipo: 'sonar-ringback' });
         expect(r.efectos).toContainEqual({
             tipo: 'arrancar-timer', nombre: 'sin-respuesta', ms: 45_000
         });
     });
 
-    it('la primera aceptacion pasa a en-llamada y crea el iframe', () => {
+    it('la aceptacion del destino pasa a en-llamada y crea el iframe', () => {
         const sel = transicion(inactivo(), { tipo: 'toque-pantalla' }).contexto;
-        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' }).contexto;
         const r = transicion(llamando, { tipo: 'sede-acepto', sede: 'murcia' });
         expect(r.contexto.estado).toBe('en-llamada');
+        expect(r.contexto.par).toBe('murcia');
         expect(r.efectos).toContainEqual({ tipo: 'crear-jitsi', sala: llamando.sala! });
     });
 
-    it('una segunda aceptacion no vuelve a crear el iframe', () => {
+    it('una aceptacion de una sede que NO es el destino no entra en la llamada', () => {
+        // Con llamadas 1 a 1 esto seria colar a un tercero. El filtro por callId de
+        // `totem.ts` no lo cubre: una sede podria publicar sobre nuestro callId.
         const sel = transicion(inactivo(), { tipo: 'toque-pantalla' }).contexto;
-        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia', 'canarias'] }).contexto;
-        const enLlamada = transicion(llamando, { tipo: 'sede-acepto', sede: 'murcia' }).contexto;
-        const r = transicion(enLlamada, { tipo: 'sede-acepto', sede: 'canarias' });
-        expect(r.efectos.some(e => e.tipo === 'crear-jitsi')).toBe(false);
-        expect(r.contexto.aceptadas).toEqual(['murcia', 'canarias']);
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' }).contexto;
+        const r = transicion(llamando, { tipo: 'sede-acepto', sede: 'canarias' });
+        expect(r.contexto).toBe(llamando);
+        expect(r.efectos).toEqual([]);
     });
 
     it('sin respuesta devuelve a inactivo y para el ringback', () => {
         const sel = transicion(inactivo(), { tipo: 'toque-pantalla' }).contexto;
-        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' }).contexto;
         const r = transicion(llamando, { tipo: 'sin-respuesta' });
         expect(r.contexto.estado).toBe('inactivo');
+        expect(r.contexto.destino).toBeNull();
         expect(r.efectos).toContainEqual({ tipo: 'parar-ringback' });
     });
 });
@@ -125,7 +129,6 @@ const invitacionDe = (origen: string): Invitacion => ({
     callId: 'call-1',
     sala: 'spm-call-1',
     origen,
-    invitados: ['lorca'],
     ts: '2026-07-30T10:00:00Z'
 });
 
@@ -203,7 +206,7 @@ describe('maquina de estados: llamada entrante', () => {
 describe('maquina de estados: colgar y el invariante del iframe', () => {
     const llegarAEnLlamada = () => {
         const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
-        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' }).contexto;
         return transicion(llamando, { tipo: 'sede-acepto', sede: 'murcia' }).contexto;
     };
 
@@ -231,7 +234,7 @@ describe('maquina de estados: colgar y el invariante del iframe', () => {
         const secuencia: Evento[] = [
             { tipo: 'broker-conectado' },
             { tipo: 'toque-pantalla' },
-            { tipo: 'seleccion-confirmada', destinos: ['murcia'] },
+            { tipo: 'seleccion-confirmada', destino: 'murcia' },
             { tipo: 'sede-acepto', sede: 'murcia' },
             { tipo: 'colgar' },
             { tipo: 'teardown-completo' }
@@ -254,7 +257,7 @@ describe('maquina de estados: colgar y el invariante del iframe', () => {
         const secuencia: Evento[] = [
             { tipo: 'broker-conectado' },
             { tipo: 'toque-pantalla' },
-            { tipo: 'seleccion-confirmada', destinos: ['murcia'] },
+            { tipo: 'seleccion-confirmada', destino: 'murcia' },
             { tipo: 'sin-respuesta' }
         ];
         let ctx = contextoInicial();
@@ -272,7 +275,7 @@ describe('maquina de estados: colgar y el invariante del iframe', () => {
 describe('maquina de estados: desacoplamiento de senalizacion y medio', () => {
     const llegarAEnLlamada = () => {
         const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
-        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' }).contexto;
         return transicion(llamando, { tipo: 'sede-acepto', sede: 'murcia' }).contexto;
     };
 
@@ -293,7 +296,7 @@ describe('maquina de estados: desacoplamiento de senalizacion y medio', () => {
         const secuencia: Evento[] = [
             { tipo: 'broker-conectado' },
             { tipo: 'toque-pantalla' },
-            { tipo: 'seleccion-confirmada', destinos: ['murcia'] },
+            { tipo: 'seleccion-confirmada', destino: 'murcia' },
             { tipo: 'sede-acepto', sede: 'murcia' },
             { tipo: 'broker-desconectado' },
             { tipo: 'colgar' },
@@ -345,34 +348,17 @@ describe('maquina de estados: desacoplamiento de senalizacion y medio', () => {
 });
 
 describe('maquina de estados: el otro lado cuelga', () => {
-    const llegarAEnLlamada = (destinos = ['murcia']) => {
+    const llegarAEnLlamada = () => {
         const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
-        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos }).contexto;
-        return transicion(llamando, { tipo: 'sede-acepto', sede: destinos[0]! }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' }).contexto;
+        return transicion(llamando, { tipo: 'sede-acepto', sede: 'murcia' }).contexto;
     };
 
-    it('si cuelga la unica sede acompanante se pasa a finalizando', () => {
+    it('si cuelga el par se pasa a finalizando', () => {
         const r = transicion(llegarAEnLlamada(), { tipo: 'sede-colgo', sede: 'murcia' });
         expect(r.contexto.estado).toBe('finalizando');
+        expect(r.contexto.par).toBeNull();
         expect(r.efectos).toContainEqual({ tipo: 'destruir-jitsi' });
-    });
-
-    it('con tres en la llamada, que cuelgue una no acaba la llamada', () => {
-        const dos = llegarAEnLlamada(['murcia', 'canarias']);
-        const tres = transicion(dos, { tipo: 'sede-acepto', sede: 'canarias' }).contexto;
-        const r = transicion(tres, { tipo: 'sede-colgo', sede: 'murcia' });
-        expect(r.contexto.estado).toBe('en-llamada');
-        expect(r.contexto.aceptadas).toEqual(['canarias']);
-        expect(r.efectos.some(e => e.tipo === 'destruir-jitsi')).toBe(false);
-    });
-
-    it('cuando cuelga la ultima, entonces si se destruye el iframe', () => {
-        const dos = llegarAEnLlamada(['murcia', 'canarias']);
-        const tres = transicion(dos, { tipo: 'sede-acepto', sede: 'canarias' }).contexto;
-        const quedaUna = transicion(tres, { tipo: 'sede-colgo', sede: 'murcia' }).contexto;
-        const r = transicion(quedaUna, { tipo: 'sede-colgo', sede: 'canarias' });
-        expect(r.contexto.estado).toBe('finalizando');
-        expect(r.efectos.filter(e => e.tipo === 'destruir-jitsi')).toHaveLength(1);
     });
 
     it('un cuelgue de una sede que no estaba en la llamada se ignora', () => {
@@ -388,7 +374,7 @@ describe('maquina de estados: el otro lado cuelga', () => {
         const secuencia: Evento[] = [
             { tipo: 'broker-conectado' },
             { tipo: 'toque-pantalla' },
-            { tipo: 'seleccion-confirmada', destinos: ['murcia'] },
+            { tipo: 'seleccion-confirmada', destino: 'murcia' },
             { tipo: 'sede-acepto', sede: 'murcia' },
             { tipo: 'sede-colgo', sede: 'murcia' },
             { tipo: 'teardown-completo' }
@@ -418,66 +404,65 @@ describe('maquina de estados: el otro lado cuelga', () => {
     });
 });
 
-describe('maquina de estados: estado por sede durante la llamada saliente', () => {
-    const llamandoA = (destinos: string[]) => {
+describe('maquina de estados: respuesta del unico destino', () => {
+    // Este bloque sustituye al antiguo "estado por sede durante la llamada
+    // saliente". Con llamadas 1 a 1 (negocio, 2026-07-31) ya no hay un mapa de
+    // estados por sede: cualquier respuesta del destino resuelve la llamada
+    // entera, en el acto y en un solo sentido.
+    const llamandoA = (destino: string) => {
         const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
-        return transicion(sel, { tipo: 'seleccion-confirmada', destinos }).contexto;
+        return transicion(sel, { tipo: 'seleccion-confirmada', destino }).contexto;
     };
 
-    it('al confirmar, todas las sedes invitadas quedan sonando', () => {
-        const ctx = llamandoA(['murcia', 'canarias']);
-        expect(ctx.estadosDestino).toEqual({ murcia: 'sonando', canarias: 'sonando' });
-    });
-
-    it('un rechazo se anota sin cortar si queda alguna sonando', () => {
-        const ctx = llamandoA(['murcia', 'canarias']);
+    it('un rechazo acaba la llamada de inmediato, sin agotar los 45 s', () => {
+        const ctx = llamandoA('murcia');
         const r = transicion(ctx, { tipo: 'sede-rechazo', sede: 'murcia' });
-        expect(r.contexto.estado).toBe('llamando');
-        expect(r.contexto.estadosDestino['murcia']).toBe('rechazo');
-        expect(r.efectos).toEqual([]);
-    });
-
-    it('si TODAS rechazan la llamada acaba en el acto, sin agotar los 45 s', () => {
-        const ctx = llamandoA(['murcia', 'canarias']);
-        const una = transicion(ctx, { tipo: 'sede-rechazo', sede: 'murcia' }).contexto;
-        const r = transicion(una, { tipo: 'sede-rechazo', sede: 'canarias' });
         expect(r.contexto.estado).toBe('inactivo');
         expect(r.efectos).toContainEqual({ tipo: 'parar-ringback' });
         expect(r.efectos).toContainEqual({ tipo: 'cancelar-timer', nombre: 'sin-respuesta' });
     });
 
-    it('un rechazo unico tambien acaba la llamada de inmediato', () => {
-        const ctx = llamandoA(['murcia']);
-        const r = transicion(ctx, { tipo: 'sede-rechazo', sede: 'murcia' });
-        expect(r.contexto.estado).toBe('inactivo');
-        expect(r.efectos).toContainEqual({ tipo: 'parar-ringback' });
-    });
-
     it('un sin-respuesta remoto se comporta igual que un rechazo', () => {
-        const ctx = llamandoA(['murcia']);
+        const ctx = llamandoA('murcia');
         const r = transicion(ctx, { tipo: 'sede-sin-respuesta', sede: 'murcia' });
         expect(r.contexto.estado).toBe('inactivo');
     });
 
-    it('una respuesta de una sede no invitada se ignora', () => {
-        const ctx = llamandoA(['murcia']);
+    it('una respuesta de una sede que no es el destino se ignora', () => {
+        const ctx = llamandoA('murcia');
         const r = transicion(ctx, { tipo: 'sede-rechazo', sede: 'canarias' });
         expect(r.contexto).toBe(ctx);
+        expect(r.efectos).toEqual([]);
     });
 
-    it('en llamada, el rechazo de una tercera sede solo se anota', () => {
-        const ctx = llamandoA(['murcia', 'canarias']);
-        const enLlamada = transicion(ctx, { tipo: 'sede-acepto', sede: 'murcia' }).contexto;
-        const r = transicion(enLlamada, { tipo: 'sede-rechazo', sede: 'canarias' });
-        expect(r.contexto.estado).toBe('en-llamada');
-        expect(r.contexto.estadosDestino['canarias']).toBe('rechazo');
+    it('durante la llamada, los eventos de una TERCERA sede no alteran nada', () => {
+        // Nadie se incorpora a una llamada en curso. Un evento ajeno que consiga
+        // pasar el filtro por callId no puede tocar ni el estado ni los efectos.
+        const enLlamada = transicion(
+            llamandoA('murcia'), { tipo: 'sede-acepto', sede: 'murcia' }
+        ).contexto;
+        for (const ajeno of ['sede-acepto', 'sede-rechazo', 'sede-sin-respuesta', 'sede-colgo'] as const) {
+            const r = transicion(enLlamada, { tipo: ajeno, sede: 'canarias' });
+            expect(r.contexto).toBe(enLlamada);
+            expect(r.efectos).toEqual([]);
+        }
+    });
+
+    it('un segundo acepta del propio par tampoco reabre nada', () => {
+        // Reentrega del broker: no puede volver a crear el iframe.
+        const enLlamada = transicion(
+            llamandoA('murcia'), { tipo: 'sede-acepto', sede: 'murcia' }
+        ).contexto;
+        const r = transicion(enLlamada, { tipo: 'sede-acepto', sede: 'murcia' });
+        expect(r.contexto).toBe(enLlamada);
+        expect(r.efectos).toEqual([]);
     });
 });
 
 describe('maquina de estados: timeout de union a Jitsi', () => {
     const enLlamada = () => {
         const sel = transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
-        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destinos: ['murcia'] }).contexto;
+        const llamando = transicion(sel, { tipo: 'seleccion-confirmada', destino: 'murcia' }).contexto;
         return transicion(llamando, { tipo: 'sede-acepto', sede: 'murcia' });
     };
 

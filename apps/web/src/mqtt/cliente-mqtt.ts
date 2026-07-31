@@ -50,18 +50,18 @@ function leerEstado(datos: unknown): EstadoSede | null {
 function leerInvitacion(datos: unknown): Invitacion | null {
     if (!esObjeto(datos)) return null;
     if (!cadena(datos.callId) || !cadena(datos.sala) || !cadena(datos.origen)) return null;
-    const invitados = Array.isArray(datos.invitados) ? datos.invitados.filter(cadena) : [];
+    // Sin lista de invitados: la llamada es 1 a 1, el topic ya nombra al
+    // destinatario y `origen` nombra al llamante. No queda nadie mas.
     return {
         callId: datos.callId,
         sala: datos.sala,
         origen: datos.origen,
-        invitados,
         ts: cadena(datos.ts) ? datos.ts : ''
     };
 }
 
 const TIPOS_EVENTO: readonly TipoEventoLlamada[] =
-    ['acepta', 'rechaza', 'sin-respuesta', 'se-une', 'cuelga'];
+    ['acepta', 'rechaza', 'sin-respuesta', 'cuelga'];
 
 function leerEventoLlamada(datos: unknown): EventoLlamada | null {
     if (!esObjeto(datos)) return null;

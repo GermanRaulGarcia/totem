@@ -1,4 +1,4 @@
-import type { Contexto, Estado, EstadoDestino, EstadoSede } from '../core/tipos';
+import type { Contexto, Estado, EstadoSede } from '../core/tipos';
 
 /**
  * Que significa un toque sobre el DOM que pinta este modulo.
@@ -35,7 +35,8 @@ export function enrutarToque(objetivo: EventTarget | null, estado: Estado): Toqu
 export interface Vista {
     contexto: Contexto;
     sedes: EstadoSede[];
-    seleccion: string[];
+    /** A lo sumo una sede elegida: las llamadas son 1 a 1. */
+    seleccion: string | null;
     reloj: string;
     microSilenciado: boolean;
     camaraApagada: boolean;
@@ -73,14 +74,6 @@ function nombreDe(v: Vista, id: string): string {
     return v.sedes.find(s => s.sede === id)?.nombre ?? id;
 }
 
-const TEXTO_DESTINO: Record<EstadoDestino, string> = {
-    'sonando': 'Sonando...',
-    'acepto': 'Acepto',
-    'rechazo': 'Rechazo',
-    'sin-respuesta': 'Sin respuesta',
-    'colgo': 'Colgo'
-};
-
 function tarjetas(v: Vista, seleccionable: boolean): string {
     return v.sedes.map(s => {
         // En modo no seleccionable NO se usa `disabled`: un boton deshabilitado no
@@ -95,13 +88,17 @@ function tarjetas(v: Vista, seleccionable: boolean): string {
         // pantalla volveria a tragarse el toque. Con el atributo, el enrutado
         // funciona por estructura del DOM y el CSS solo es defensa en profundidad.
         const inerte = !seleccionable;
-        const bloqueado = seleccionable && !s.online;
+        // Una sede OCUPADA no es pulsable, igual que una offline. Con llamadas 1 a
+        // 1 esta es la proteccion principal contra un tercero: nadie se incorpora
+        // a una llamada en curso, asi que llamar a quien ya esta hablando solo
+        // produciria 45 s de timbre que nadie va a contestar.
+        const bloqueado = seleccionable && (!s.online || s.disponibilidad === 'ocupado');
         return `
         <button class="${claseSede(s)}${inerte ? ' sede--inerte' : ''}" data-sede="${escapar(s.sede)}"
                 ${inerte ? 'data-accion="despertar"' : ''}
                 ${bloqueado ? 'disabled' : ''}
                 ${inerte || bloqueado ? 'aria-disabled="true"' : ''}
-                ${v.seleccion.includes(s.sede) ? 'data-elegida="si"' : ''}>
+                ${v.seleccion === s.sede ? 'data-elegida="si"' : ''}>
             <span class="sede__nombre">${escapar(s.nombre)}</span>
             <span class="sede__estado">${s.online
                 ? (s.disponibilidad === 'ocupado' ? 'En llamada' : 'Disponible')
@@ -110,18 +107,22 @@ function tarjetas(v: Vista, seleccionable: boolean): string {
     }).join('');
 }
 
-/** Diseno §6: la pantalla `llamando` muestra el estado en vivo de cada sede. */
-function destinos(v: Vista): string {
-    return v.contexto.destinos.map(id => {
-        const estado = v.contexto.estadosDestino[id] ?? 'sonando';
-        return `
+/**
+ * Diseno §6: la pantalla `llamando` muestra a quien se esta llamando.
+ *
+ * Ya no hay maquina de estados por sede. Con llamadas 1 a 1, mientras esta
+ * pintada esta pantalla el destino SOLO puede estar sonando: si acepta se pasa a
+ * `en-llamada`, y si rechaza o no contesta se vuelve a `inactivo`. Un campo que
+ * unicamente puede valer `sonando` es codigo muerto disfrazado de vivo.
+ */
+function destino(v: Vista): string {
+    const id = v.contexto.destino;
+    if (id === null) return '';
+    return `
         <div class="sede sede--inerte destino" data-destino="${escapar(id)}">
             <span class="sede__nombre">${escapar(nombreDe(v, id))}</span>
-            <span class="sede__estado destino__estado" data-estado="${estado}">${
-                escapar(TEXTO_DESTINO[estado])
-            }</span>
+            <span class="sede__estado destino__estado">Sonando...</span>
         </div>`;
-    }).join('');
 }
 
 // Firma del contenido de la pantalla de reposo. Ver el comentario en `render`.
@@ -204,7 +205,7 @@ export function render(raiz: HTMLElement, v: Vista): void {
                     <nav class="acciones">
                         <button data-accion="cancelar" class="boton">Cancelar</button>
                         <button data-accion="llamar" class="boton boton--principal"
-                                ${v.seleccion.length === 0 ? 'disabled' : ''}>Llamar</button>
+                                ${v.seleccion === null ? 'disabled' : ''}>Llamar</button>
                     </nav>
                 </section>`;
             return;
@@ -213,7 +214,7 @@ export function render(raiz: HTMLElement, v: Vista): void {
             raiz.innerHTML = `
                 <section class="pantalla pantalla--llamando">
                     <h1 class="titulo">Llamando...</h1>
-                    <div class="sedes">${destinos(v)}</div>
+                    <div class="sedes">${destino(v)}</div>
                     <button data-accion="cancelar" class="boton boton--colgar">Cancelar</button>
                 </section>`;
             return;

@@ -9,7 +9,9 @@ const esperar = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /**
  * `conectar()` ya no espera al primer CONNACK a proposito (ver cliente-mqtt.ts),
- * asi que los tests esperan al enganche completo: suscripcion + presencia publicada.
+ * asi que los tests esperan al enganche completo: suscripcion hecha y
+ * `alConectar` disparado. La presencia NO se publica aqui: la decide la maquina
+ * de estados, que es la unica que sabe si la sede esta libre u ocupada.
  */
 function espiaUniones(c: ClienteMqtt) {
     let total = 0;
@@ -160,7 +162,7 @@ describe('ClienteMqtt', () => {
 
         await lorca.publicarInvitacion('murcia', {
             callId: 'c1', sala: 'spm-c1', origen: 'lorca',
-            invitados: ['murcia'], ts: new Date().toISOString()
+            ts: new Date().toISOString()
         });
         await esperar(150);
 
@@ -193,7 +195,7 @@ describe('ClienteMqtt', () => {
         await conectarYEsperar(lorca);
         await lorca.publicarInvitacion('murcia', {
             callId: 'c-vieja', sala: 'spm-c-vieja', origen: 'lorca',
-            invitados: ['murcia'], ts: new Date().toISOString()
+            ts: new Date().toISOString()
         });
         await esperar(150);
 
@@ -278,7 +280,7 @@ describe('ClienteMqtt: reconexion', () => {
         lorca.alRecibirInvitacion(i => recibidas.push(i.callId));
         await canarias.publicarInvitacion('lorca', {
             callId: 'c-tras-reconexion', sala: 'spm-c', origen: 'canarias',
-            invitados: ['lorca'], ts: new Date().toISOString()
+            ts: new Date().toISOString()
         });
         await esperar(300);
         expect(recibidas).toEqual(['c-tras-reconexion']);

@@ -16,7 +16,7 @@ describe('pantallas', () => {
     const vista = (parcial: Partial<Vista>): Vista => ({
         contexto: contextoEn('inactivo'),
         sedes: [sede('murcia', true)],
-        seleccion: [],
+        seleccion: null,
         reloj: '10:00',
         microSilenciado: false,
         camaraApagada: false,
@@ -43,16 +43,44 @@ describe('pantallas', () => {
         expect(tarjeta!.disabled).toBe(true);
     });
 
+    it('marca las sedes OCUPADAS como no seleccionables, igual que las offline', () => {
+        // Con llamadas 1 a 1 nadie se incorpora a una conversacion en curso, asi
+        // que esta es la proteccion principal contra un tercero: llamar a quien ya
+        // esta hablando solo produciria 45 s de timbre que nadie va a contestar.
+        render(raiz, vista({
+            contexto: contextoEn('seleccionando'),
+            sedes: [sede('murcia', true), sede('canarias', true, 'ocupado')]
+        }));
+        const ocupada = raiz.querySelector<HTMLButtonElement>('[data-sede="canarias"]')!;
+        const libre = raiz.querySelector<HTMLButtonElement>('[data-sede="murcia"]')!;
+        expect(ocupada.disabled).toBe(true);
+        expect(ocupada.getAttribute('aria-disabled')).toBe('true');
+        expect(ocupada.textContent).toContain('En llamada');
+        expect(libre.disabled).toBe(false);
+    });
+
     it('el boton de llamar esta deshabilitado sin seleccion', () => {
         render(raiz, vista({ contexto: contextoEn('seleccionando') }));
         const boton = raiz.querySelector<HTMLButtonElement>('[data-accion="llamar"]');
         expect(boton!.disabled).toBe(true);
     });
 
-    it('el boton de llamar se habilita con al menos una sede', () => {
-        render(raiz, vista({ contexto: contextoEn('seleccionando'), seleccion: ['murcia'] }));
+    it('el boton de llamar se habilita con la sede elegida', () => {
+        render(raiz, vista({ contexto: contextoEn('seleccionando'), seleccion: 'murcia' }));
         const boton = raiz.querySelector<HTMLButtonElement>('[data-accion="llamar"]');
         expect(boton!.disabled).toBe(false);
+        expect(raiz.querySelectorAll('[data-elegida="si"]')).toHaveLength(1);
+    });
+
+    it('solo puede haber UNA tarjeta marcada como elegida', () => {
+        render(raiz, vista({
+            contexto: contextoEn('seleccionando'),
+            sedes: [sede('murcia', true), sede('canarias', true)],
+            seleccion: 'canarias'
+        }));
+        const elegidas = [...raiz.querySelectorAll('[data-elegida="si"]')]
+            .map(n => n.getAttribute('data-sede'));
+        expect(elegidas).toEqual(['canarias']);
     });
 
     it('en recibiendo muestra quien llama y los dos botones', () => {
@@ -89,27 +117,20 @@ describe('pantallas', () => {
         expect(raiz.querySelector('[data-accion="cancelar"]')).not.toBeNull();
     });
 
-    it('en llamando muestra el estado en vivo de cada sede invitada', () => {
-        const ctx = {
-            ...contextoEn('llamando'),
-            destinos: ['murcia', 'canarias'],
-            estadosDestino: { murcia: 'acepto' as const, canarias: 'rechazo' as const }
-        };
+    it('en llamando muestra UN unico destino, con su nombre legible', () => {
+        // Sin mapa de estados por sede: mientras esta pintada esta pantalla el
+        // destino solo puede estar sonando. Si aceptara se pasaria a `en-llamada`;
+        // si rechazara o no contestara, a `inactivo`.
+        const ctx = { ...contextoEn('llamando'), destino: 'canarias' };
         render(raiz, vista({
             contexto: ctx,
             sedes: [sede('murcia', true), { ...sede('canarias', true), nombre: 'Gran Canaria' }]
         }));
-        const estados = [...raiz.querySelectorAll('[data-destino]')].map(
+        const destinos = [...raiz.querySelectorAll('[data-destino]')].map(
             n => [n.getAttribute('data-destino'), n.querySelector('.destino__estado')!.textContent]
         );
-        expect(estados).toEqual([['murcia', 'Acepto'], ['canarias', 'Rechazo']]);
+        expect(destinos).toEqual([['canarias', 'Sonando...']]);
         expect(raiz.textContent).toContain('Gran Canaria');
-    });
-
-    it('en llamando una sede sin respuesta todavia aparece como sonando', () => {
-        const ctx = { ...contextoEn('llamando'), destinos: ['murcia'], estadosDestino: {} };
-        render(raiz, vista({ contexto: ctx }));
-        expect(raiz.querySelector('.destino__estado')!.textContent).toBe('Sonando...');
     });
 
     it('en en-llamada no pinta el contenedor de video dos veces', () => {

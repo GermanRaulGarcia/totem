@@ -65,16 +65,13 @@ export class Interprete {
 
     private async uno(efecto: Efecto): Promise<void> {
         switch (efecto.tipo) {
-            case 'publicar-invitaciones':
-                for (const destino of efecto.destinos) {
-                    await this.mqtt.publicarInvitacion(destino, {
-                        callId: efecto.callId,
-                        sala: efecto.sala,
-                        origen: this.sede,
-                        invitados: efecto.destinos,
-                        ts: new Date().toISOString()
-                    });
-                }
+            case 'publicar-invitacion':
+                await this.mqtt.publicarInvitacion(efecto.destino, {
+                    callId: efecto.callId,
+                    sala: efecto.sala,
+                    origen: this.sede,
+                    ts: new Date().toISOString()
+                });
                 return;
 
             case 'publicar-evento-llamada':

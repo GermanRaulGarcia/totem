@@ -142,7 +142,7 @@ describe('integracion: dos sedes contra un broker real', () => {
         // Lorca llama a Murcia.
         lorca.totem.emitir({ tipo: 'toque-pantalla' });
         lorca.totem.alternarSeleccion('murcia');
-        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destinos: ['murcia'] });
+        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destino: 'murcia' });
         expect(lorca.totem.contexto.estado).toBe('llamando');
         expect(lorca.registro.creados).toEqual([]); // Nada de iframe mientras suena.
 
@@ -182,7 +182,7 @@ describe('integracion: dos sedes contra un broker real', () => {
             && murcia.totem.contexto.estado === 'inactivo');
 
         lorca.totem.emitir({ tipo: 'toque-pantalla' });
-        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destinos: ['murcia'] });
+        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destino: 'murcia' });
         await hasta(() => murcia.totem.contexto.estado === 'recibiendo');
 
         murcia.totem.emitir({ tipo: 'rechazar' });
@@ -199,7 +199,7 @@ describe('integracion: dos sedes contra un broker real', () => {
             && murcia.totem.contexto.estado === 'inactivo');
 
         lorca.totem.emitir({ tipo: 'toque-pantalla' });
-        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destinos: ['murcia'] });
+        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destino: 'murcia' });
         await hasta(() => murcia.totem.contexto.estado === 'recibiendo');
         murcia.totem.emitir({ tipo: 'aceptar' });
         await hasta(() => lorca.totem.contexto.estado === 'en-llamada');
@@ -241,9 +241,26 @@ describe('integracion: dos sedes contra un broker real', () => {
 
         // Y la senalizacion sigue funcionando de verdad: se puede volver a llamar.
         lorca.totem.emitir({ tipo: 'toque-pantalla' });
-        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destinos: ['murcia'] });
+        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destino: 'murcia' });
         await hasta(() => murcia.totem.contexto.estado === 'recibiendo');
     }, 40_000);
+
+    it('elegir una segunda sede SUSTITUYE a la primera: nunca hay dos destinos', () => {
+        // Las llamadas son 1 a 1 desde el 2026-07-31. La seleccion multiple se
+        // retiro entera: no queda un array de un elemento esperando a revivir.
+        const lorca = montar('lorca', 'Lorca', { } as HTMLElement);
+
+        expect(lorca.totem.seleccion).toBeNull();
+        lorca.totem.alternarSeleccion('murcia');
+        expect(lorca.totem.seleccion).toBe('murcia');
+
+        lorca.totem.alternarSeleccion('canarias');
+        expect(lorca.totem.seleccion).toBe('canarias');
+
+        // Y volver a tocar la elegida la deselecciona.
+        lorca.totem.alternarSeleccion('canarias');
+        expect(lorca.totem.seleccion).toBeNull();
+    });
 
     it('un parpadeo del broker en plena llamada no deja la presencia mintiendo "libre"', async () => {
         const lorca = montar('lorca', 'Lorca', { } as HTMLElement);
@@ -254,7 +271,7 @@ describe('integracion: dos sedes contra un broker real', () => {
             && murcia.totem.contexto.estado === 'inactivo');
 
         lorca.totem.emitir({ tipo: 'toque-pantalla' });
-        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destinos: ['murcia'] });
+        lorca.totem.emitir({ tipo: 'seleccion-confirmada', destino: 'murcia' });
         await hasta(() => murcia.totem.contexto.estado === 'recibiendo');
         murcia.totem.emitir({ tipo: 'aceptar' });
         await hasta(() => lorca.totem.contexto.estado === 'en-llamada');

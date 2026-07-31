@@ -119,9 +119,13 @@ raiz.addEventListener('click', ev => {
 
     switch (toque.accion) {
         case 'despertar': totem.emitir({ tipo: 'toque-pantalla' }); break;
-        case 'llamar':
-            totem.emitir({ tipo: 'seleccion-confirmada', destinos: [...totem.seleccion] });
+        case 'llamar': {
+            // El boton esta deshabilitado sin seleccion, pero eso es una propiedad
+            // del marcado, no una garantia del tipo. La comprobacion es la garantia.
+            const destino = totem.seleccion;
+            if (destino !== null) totem.emitir({ tipo: 'seleccion-confirmada', destino });
             break;
+        }
         case 'cancelar': totem.emitir({ tipo: 'cancelar' }); break;
         case 'aceptar': totem.emitir({ tipo: 'aceptar' }); break;
         case 'rechazar': totem.emitir({ tipo: 'rechazar' }); break;

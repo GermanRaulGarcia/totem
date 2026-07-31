@@ -36,17 +36,16 @@ function dobles() {
 }
 
 describe('Interprete', () => {
-    it('publica una invitacion por cada destino', async () => {
+    it('publica UNA invitacion, dirigida al unico destino', async () => {
         const d = dobles();
         const efecto: Efecto = {
-            tipo: 'publicar-invitaciones', callId: 'c1', sala: 'spm-c1',
-            destinos: ['murcia', 'canarias']
+            tipo: 'publicar-invitacion', callId: 'c1', sala: 'spm-c1', destino: 'murcia'
         };
         await d.interprete.ejecutar([efecto]);
-        expect(d.mqtt.publicarInvitacion).toHaveBeenCalledTimes(2);
-        expect(d.mqtt.publicarInvitacion).toHaveBeenCalledWith('murcia', expect.objectContaining({
-            callId: 'c1', sala: 'spm-c1', origen: 'lorca'
-        }));
+        expect(d.mqtt.publicarInvitacion).toHaveBeenCalledTimes(1);
+        expect(d.mqtt.publicarInvitacion).toHaveBeenCalledWith('murcia', {
+            callId: 'c1', sala: 'spm-c1', origen: 'lorca', ts: expect.any(String)
+        });
     });
 
     it('crea la sesion de Jitsi', async () => {

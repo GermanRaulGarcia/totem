@@ -19,11 +19,14 @@ export interface Invitacion {
     callId: string;
     sala: string;
     origen: string;
-    invitados: string[];
     ts: string;
 }
 
-export type TipoEventoLlamada = 'acepta' | 'rechaza' | 'sin-respuesta' | 'se-une' | 'cuelga';
+/**
+ * Ya no existe `se-une`: las llamadas son 1 a 1 y nadie se incorpora a una
+ * llamada en curso. Ver la nota del 2026-07-31 en el diseno §5.2.
+ */
+export type TipoEventoLlamada = 'acepta' | 'rechaza' | 'sin-respuesta' | 'cuelga';
 
 export interface EventoLlamada {
     callId: string;
@@ -42,17 +45,11 @@ export type Estado =
     | 'finalizando'
     | 'sin-conexion';
 
-/**
- * Estado en vivo de cada sede invitada durante una llamada saliente.
- * La pantalla `llamando` lo muestra sede por sede (diseno §6).
- */
-export type EstadoDestino = 'sonando' | 'acepto' | 'rechazo' | 'sin-respuesta' | 'colgo';
-
 export type Evento =
     | { tipo: 'broker-conectado' }
     | { tipo: 'broker-desconectado' }
     | { tipo: 'toque-pantalla' }
-    | { tipo: 'seleccion-confirmada'; destinos: string[] }
+    | { tipo: 'seleccion-confirmada'; destino: string }
     | { tipo: 'cancelar' }
     | { tipo: 'timeout-seleccion' }
     | { tipo: 'invitacion-recibida'; invitacion: Invitacion }
@@ -69,7 +66,7 @@ export type Evento =
     | { tipo: 'teardown-completo' };
 
 export type Efecto =
-    | { tipo: 'publicar-invitaciones'; callId: string; sala: string; destinos: string[] }
+    | { tipo: 'publicar-invitacion'; callId: string; sala: string; destino: string }
     | { tipo: 'publicar-evento-llamada'; callId: string; evento: TipoEventoLlamada }
     | { tipo: 'publicar-estado'; disponibilidad: Disponibilidad; callId: string | null }
     | { tipo: 'crear-jitsi'; sala: string }
@@ -84,16 +81,25 @@ export type Efecto =
 
 export type NombreTimer = 'seleccion' | 'sin-respuesta' | 'union-jitsi';
 
+/**
+ * Una llamada tiene como mucho DOS sedes (negocio, 2026-07-31). Por eso aqui no
+ * hay listas: hay a lo sumo un origen, un destino y un par.
+ */
 export interface Contexto {
     estado: Estado;
     estadoSeguro: Estado;
     callId: string | null;
     sala: string | null;
+    /** Quien nos llama, mientras la llamada es entrante. */
     origen: string | null;
-    destinos: string[];
-    aceptadas: string[];
-    /** Estado en vivo por sede invitada. Clave: id de sede. */
-    estadosDestino: Record<string, EstadoDestino>;
+    /** A quien llamamos, mientras la llamada es saliente. */
+    destino: string | null;
+    /**
+     * La otra sede YA dentro de la llamada. Distinto de `destino`: durante
+     * `llamando` hay destino y todavia no hay par. Es lo que decide si un
+     * `sede-colgo` nos deja solos en la sala.
+     */
+    par: string | null;
 }
 
 export interface Resultado {

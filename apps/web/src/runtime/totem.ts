@@ -25,7 +25,8 @@ export interface OpcionesTotem {
  */
 export class Totem {
     contexto: Contexto = contextoInicial();
-    seleccion: string[] = [];
+    /** A lo sumo UNA sede elegida: las llamadas son 1 a 1 (negocio, 2026-07-31). */
+    seleccion: string | null = null;
 
     private directorio: Sede[] = [];
     private readonly presencia = new Map<string, EstadoSede>();
@@ -75,15 +76,17 @@ export class Totem {
         const resultado = transicion(this.contexto, evento);
         const cambio = resultado.contexto !== this.contexto;
         this.contexto = resultado.contexto;
-        if (cambio) this.seleccion = [];
+        if (cambio) this.seleccion = null;
         this.op.alCambiar?.();
         void this.interprete.ejecutar(resultado.efectos);
     }
 
+    /**
+     * Elegir una sede SUSTITUYE a la anterior; volver a tocar la misma la
+     * deselecciona. No acumula: nunca puede haber dos destinos.
+     */
     alternarSeleccion(sede: string): void {
-        this.seleccion = this.seleccion.includes(sede)
-            ? this.seleccion.filter(s => s !== sede)
-            : [...this.seleccion, sede];
+        this.seleccion = this.seleccion === sede ? null : sede;
         this.op.alCambiar?.();
     }
 
@@ -123,7 +126,13 @@ export class Totem {
                     this.emitir({ tipo: 'sede-sin-respuesta', sede: evento.sede });
                     return;
                 case 'cuelga': this.emitir({ tipo: 'sede-colgo', sede: evento.sede }); return;
-                case 'se-une': return; // Informativo: no cambia de estado.
+                // Al retirarse `se-une` el switch quedo exhaustivo. Se fija con un
+                // never para que anadir un tipo de evento futuro sea un error de
+                // compilacion y no un mensaje que se pierde en silencio.
+                default: {
+                    const _exhaustivo: never = evento.tipo;
+                    console.error('evento de llamada no contemplado', _exhaustivo);
+                }
             }
         });
 
