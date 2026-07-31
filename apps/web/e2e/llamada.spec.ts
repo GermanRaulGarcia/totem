@@ -14,7 +14,16 @@ async function abrirTotem(page: Page, sede: string): Promise<void> {
     // Se sustituye Jitsi por un doble: aqui probamos NUESTRA logica, no la de Jitsi.
     await page.addInitScript(() => {
         (window as unknown as Record<string, unknown>).JitsiMeetExternalAPI = class {
-            constructor() { document.body.setAttribute('data-jitsi', 'activo'); }
+            constructor(_host: string, opciones: { parentNode: HTMLElement }) {
+                const padre = opciones.parentNode;
+                // Se anota EN QUE nodo se ha pedido montar el iframe. Comprobar que
+                // `#jitsi` es visible no vale de nada: es un div `position: fixed`
+                // vacio, siempre visible aunque el iframe cuelgue de otro sitio y
+                // acabe fuera de la pantalla del kiosco.
+                document.body.setAttribute('data-jitsi-padre', padre?.id ?? '(ninguno)');
+                padre.appendChild(document.createElement('iframe'));
+                document.body.setAttribute('data-jitsi', 'activo');
+            }
             executeCommand() {}
             addEventListener() {}
             async isAudioMuted() { return false; }
@@ -43,21 +52,32 @@ test('una llamada de Lorca a Murcia se establece y se cuelga', async ({ browser 
     await lorca.locator('[data-accion="llamar"]').click();
     await expect(lorca.locator('.pantalla--llamando')).toBeVisible();
 
-    // Mientras suena, Lorca NO ha creado el iframe.
+    // Mientras suena, Lorca NO ha creado el iframe, y ve a Murcia sonando.
     await expect(lorca.locator('body')).not.toHaveAttribute('data-jitsi', 'activo');
+    await expect(lorca.locator('[data-destino="murcia"]')).toContainText('Sonando');
 
     // Murcia recibe y acepta.
     await expect(murcia.locator('.pantalla--entrante')).toBeVisible();
     await murcia.locator('[data-accion="aceptar"]').click();
 
-    // Ambos entran en llamada y el iframe existe.
-    await expect(murcia.locator('#jitsi')).toBeVisible();
-    await expect(lorca.locator('#jitsi')).toBeVisible();
+    // Ambos entran en llamada y el iframe cuelga DEL contenedor de video, no de
+    // `<main>`: montarlo en main lo dejaria a y = 100dvh, fuera de una pantalla
+    // que no puede hacer scroll. Habria audio y no habria imagen.
+    await expect(murcia.locator('body')).toHaveAttribute('data-jitsi-padre', 'jitsi');
+    await expect(lorca.locator('body')).toHaveAttribute('data-jitsi-padre', 'jitsi');
+    await expect(murcia.locator('#jitsi iframe')).toHaveCount(1);
+    await expect(lorca.locator('#jitsi iframe')).toHaveCount(1);
 
-    // Murcia cuelga y el iframe se destruye.
+    // Murcia cuelga: se destruye su iframe...
     await murcia.locator('[data-accion="colgar"]').click();
     await expect(murcia.locator('body')).toHaveAttribute('data-jitsi', 'destruido');
     await expect(murcia.locator('.pantalla--reposo')).toBeVisible();
+
+    // ...y Lorca, que se queda sola en la sala, suelta la suya tambien. Sin esto,
+    // Lorca se quedaria en `en-llamada` con un iframe vivo en una sala vacia:
+    // exactamente el fallo del sistema antiguo que este proyecto elimina.
+    await expect(lorca.locator('body')).toHaveAttribute('data-jitsi', 'destruido');
+    await expect(lorca.locator('.pantalla--reposo')).toBeVisible();
 
     // Sin cerrar los contextos, sus conexiones MQTT por WebSocket quedan abiertas
     // y wss.close() (en broker.parar(), afterAll) espera indefinidamente a que
