@@ -4,6 +4,11 @@ Interfono por vídeo entre las oficinas de **Lorca**, **Gran Canaria** y **Murci
 Cada sede tiene un panel táctil colgado en la pared que sirve para llamar a las
 otras y para recibir sus llamadas.
 
+> 👋 **¿Acabas de coger este proyecto?** Empieza por **[`docs/ESTADO.md`](docs/ESTADO.md)**:
+> dónde estamos, qué hay pendiente, qué fallos ya están identificados y qué
+> decisiones no conviene reabrir. Este README explica cómo funciona el sistema;
+> ese documento explica qué hacer a continuación.
+
 > ⚠️ **En este repositorio conviven DOS sistemas.** No son versiones del mismo
 > código: son dos programas distintos, y uno de ellos está en producción ahora
 > mismo. Antes de tocar nada, lee la tabla siguiente.
@@ -139,6 +144,7 @@ sistema no viven dentro de un módulo, viven entre dos.
 
 | Documento | Contenido |
 |---|---|
+| `docs/ESTADO.md` | **Empieza aquí.** Estado, siguientes pasos, fallos conocidos y decisiones cerradas |
 | `docs/superpowers/specs/2026-07-30-totem-redesign-design.md` | El diseño: decisiones, contrato MQTT, FSM, seguridad, fases |
 | `docs/superpowers/plans/2026-07-30-totem-fases-1-4.md` | Plan de implementación de las fases 1 a 4 |
 | `infra/README.md` | Despliegue del VPS: Mosquitto, Caddy, credenciales y directorio de sedes |
