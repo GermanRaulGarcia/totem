@@ -1,0 +1,107 @@
+:root {
+    --fondo: #0b0e14;
+    --superficie: #151a23;
+    --texto: #e8eaed;
+    --tenue: #8a92a6;
+    --acento: #2f7cf6;
+    --verde: #24a35a;
+    --ambar: #d99413;
+    --rojo: #d0392b;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--fondo);
+    color: var(--texto);
+    font-family: system-ui, sans-serif;
+    /* Un long-press o un pinch accidental no pueden romper el layout. */
+    user-select: none;
+    touch-action: manipulation;
+    overscroll-behavior: none;
+    cursor: none;
+}
+
+.pantalla {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(1rem, 3dvh, 3rem);
+    padding: clamp(1rem, 4dvw, 4rem);
+}
+
+.reloj { font-size: clamp(4rem, 18dvw, 12rem); font-weight: 200; margin: 0; }
+.titulo { font-size: clamp(1.5rem, 5dvw, 3.5rem); margin: 0; font-weight: 500; }
+.mensaje { font-size: clamp(1rem, 3dvw, 2rem); color: var(--tenue); margin: 0; }
+.invitacion { font-size: clamp(1rem, 2.5dvw, 1.75rem); color: var(--tenue); margin: 0; }
+
+.sedes { display: flex; gap: clamp(0.75rem, 2dvw, 2rem); flex-wrap: wrap; justify-content: center; }
+
+.sede {
+    min-width: clamp(9rem, 22dvw, 20rem);
+    min-height: 120px; /* Boton de pared, no de movil. */
+    display: flex; flex-direction: column; gap: 0.5rem;
+    align-items: center; justify-content: center;
+    background: var(--superficie); color: var(--texto);
+    border: 2px solid transparent; border-radius: 1rem;
+    font-size: clamp(1rem, 2dvw, 1.5rem);
+    /* Solo transform y opacity: no tocan layout, van por compositor. */
+    transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.sede:active:not([disabled]):not(.sede--inerte) { transform: scale(0.96); }
+
+/* Tarjeta puramente informativa (reposo y llamando): el toque la atraviesa y
+   llega al contenedor, que es quien despierta la pantalla. Ver `tarjetas()`. */
+.sede--inerte { pointer-events: none; }
+.sede[data-elegida="si"] { border-color: var(--acento); }
+.sede--libre .sede__estado { color: var(--verde); }
+.sede--ocupada .sede__estado { color: var(--ambar); }
+.sede--offline { opacity: 0.4; }
+/* En el selector, una sede offline U OCUPADA se pinta apagada y no es pulsable:
+   con llamadas 1 a 1 nadie se incorpora a una conversacion en curso. */
+.sede[disabled] { opacity: 0.4; }
+.sede__estado { font-size: 0.75em; color: var(--tenue); }
+
+.acciones { display: flex; gap: 1rem; }
+
+.boton {
+    min-height: 120px; min-width: clamp(9rem, 20dvw, 16rem);
+    border: none; border-radius: 1rem;
+    background: var(--superficie); color: var(--texto);
+    font-size: clamp(1.1rem, 2.5dvw, 2rem);
+    transition: transform 120ms ease;
+}
+
+.boton:active:not([disabled]) { transform: scale(0.96); }
+.boton[disabled] { opacity: 0.3; }
+.boton--principal { background: var(--acento); }
+.boton--aceptar { background: var(--verde); }
+.boton--colgar { background: var(--rojo); }
+
+.pantalla--reposo { position: relative; }
+
+/* Prevencion de burn-in en un panel encendido de forma permanente. */
+@keyframes deriva {
+    0%   { transform: translate(0, 0); }
+    50%  { transform: translate(6px, 4px); }
+    100% { transform: translate(0, 0); }
+}
+.pantalla--reposo > * { animation: deriva 120s ease-in-out infinite; }
+
+@keyframes latido { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 1; transform: scale(1.15); } }
+.pulso {
+    width: clamp(4rem, 10dvw, 8rem); aspect-ratio: 1;
+    border-radius: 50%; background: var(--acento);
+    animation: latido 1.2s ease-in-out infinite;
+}
+
+#jitsi { position: fixed; inset: 0; }
+.controles { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); display: flex; gap: 1rem; z-index: 10; }
+.control { min-height: 120px; min-width: 120px; border: none; border-radius: 50%; background: var(--superficie); color: var(--texto); font-size: 1rem; }
+.control--colgar { background: var(--rojo); }
+.control--inactivo { background: var(--ambar); color: #14202f; }

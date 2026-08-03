@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    // `strict` NO lo incluye. Sin esto, una funcion que devuelve Promise<void>
+    // puede tener un switch incompleto sin que el compilador diga nada: es lo que
+    // permitia al interprete convertir una variante nueva de Efecto en un no-op
+    // silencioso. Ver el `default: never` de src/runtime/interprete.ts.
+    "noImplicitReturns": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["src"]
+}
