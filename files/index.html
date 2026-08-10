@@ -111,8 +111,25 @@
                 configOverwrite: {
                     startWithAudioMuted: true,
                     prejoinPageEnabled: false,
+                    // Seguimos viendonos a nosotros mismos, pero en miniatura.
                     disableSelfView: false,
-                    enterTileView: true,
+                    // Vista de orador, no mosaico: el otro grande y uno mismo pequeno
+                    // abajo, como una videollamada de movil. En mosaico todos salen
+                    // del mismo tamano, que es lo que habia antes.
+                    //
+                    // La clave es `disableTileView`. El codigo original traia
+                    // `enterTileView: true`, que NO es una opcion de Jitsi y nunca
+                    // hizo nada: el mosaico venia de las llamadas a setTileView(true),
+                    // no de ahi. Verificado contra la documentacion oficial.
+                    //
+                    // OJO: con los tres totems en una sala permanente, "el grande" es
+                    // el orador dominante y va cambiando segun quien hable. Eso se
+                    // acaba con el redisenno, donde las llamadas son 1 a 1.
+                    disableTileView: true,
+                    // La miniatura propia vive en el filmstrip, y Jitsi lo esconde
+                    // solo cuando la pantalla es estrecha. Un panel VERTICAL entra
+                    // justo en ese caso, asi que sin esto no se ve uno a si mismo.
+                    disableFilmstripAutohiding: true,
                     p2p: { enabled: false },
                     // Sin "settings" ni "hangup": en un panel accesible, colgar deja el totem
                     // fuera de la sala sin forma de volver, y ajustes permite cambiar el
@@ -124,6 +141,9 @@
                 interfaceConfigOverwrite: {
                     SHOW_JITSI_WATERMARK: false, // Ocultamos el de Jitsi porque ya pusimos el nuestro arriba
                     SHOW_WATERMARK_FOR_GUESTS: false,
+                    // Ya no es la vista por defecto, pero se mantiene: el boton
+                    // 'tileview' de la barra sigue permitiendo pasar a mosaico a mano,
+                    // y en un panel vertical una sola columna es como debe verse.
                     TILE_VIEW_MAX_COLUMNS: 1,
                     TOOLBAR_BUTTONS: ['microphone', 'camera', 'tileview']
                 },
@@ -147,7 +167,9 @@
         function activarPortal() {
             if (!api) return;
             fijarMicSilenciado(false); // Abrir el microfono. Idempotente.
-            api.executeCommand('setTileView', true);
+            // Reimpone la vista de orador. Si alguien dejo el panel en mosaico
+            // tocando el boton de la barra, la siguiente campanada lo recupera solo.
+            api.executeCommand('setTileView', false);
 
             if (timerSilencio) clearTimeout(timerSilencio);
             timerSilencio = setTimeout(() => {
@@ -187,7 +209,7 @@
             api.addEventListener('videoConferenceJoined', async () => {
                 micSilenciado = await api.isAudioMuted();
                 fijarMicSilenciado(true);
-                api.executeCommand('setTileView', true);
+                api.executeCommand('setTileView', false);
             });
         }
     </script>
