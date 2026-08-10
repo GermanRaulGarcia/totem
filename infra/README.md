@@ -45,8 +45,20 @@ EOF
 
 ```bash
 mkdir -p vendor
-curl -o vendor/external_api.js https://meet.sunube.net/external_api.js
+curl -fSL -o vendor/external_api.js https://meet.sunube.net/external_api.js
 ```
+
+⚠️ **El `-f` no es opcional.** Sin él, `curl` guarda el cuerpo de un error HTTP
+como si fuera el fichero: un `external_api.js` de 19 bytes con el texto
+`404 page not found` dentro. El navegador lo carga, revienta al interpretarlo, y
+el tótem arranca con la interfaz perfecta pero vuelve a reposo nada más aceptar
+una llamada, emitiendo `jitsi-fallo`. Un fallo caro de diagnosticar por lo poco
+que se parece a su causa. Comprueba siempre el tamaño: debe rondar los 100 KB.
+
+Comprobado el 2026-08-04: **`https://meet.sunube.net/external_api.js` responde 404
+desde fuera de las oficinas** (la raíz del dominio también). Si te pasa al
+aprovisionar el VPS, pregunta al administrador de Jitsi antes de dar el paso por
+bueno.
 
 4. Construir la web y levantar:
 
@@ -90,8 +102,20 @@ Vite sirve los estáticos de `apps/web/public/` directamente, así que
 
 ```bash
 mkdir -p apps/web/public/vendor
-curl -o apps/web/public/vendor/external_api.js https://meet.sunube.net/external_api.js
+curl -fSL -o apps/web/public/vendor/external_api.js https://meet.sunube.net/external_api.js
 ```
+
+Mismo aviso que arriba con el `-f`, y misma comprobación de tamaño. Para una
+prueba en local vale también la copia pública:
+
+```bash
+curl -fSL -o apps/web/public/vendor/external_api.js https://meet.jit.si/external_api.js
+```
+
+El script es un cargador genérico: monta el iframe contra el dominio que se le
+pase en `new JitsiMeetExternalAPI(...)`, así que sirve para probar contra
+`meet.sunube.net`. Para producción, usa la copia del propio servidor: si las
+versiones se separan mucho, alguna función puede no responder.
 
 `apps/web/public/vendor/` no se versiona (ver `.gitignore`), igual que
 `infra/vendor/` en producción: cada entorno descarga su propia copia.
