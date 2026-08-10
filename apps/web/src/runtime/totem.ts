@@ -28,6 +28,15 @@ export class Totem {
     /** A lo sumo UNA sede elegida: las llamadas son 1 a 1 (negocio, 2026-07-31). */
     seleccion: string | null = null;
 
+    /**
+     * Hay broker AHORA MISMO. Es estado del TRANSPORTE y por eso vive aqui y no
+     * en el contexto de la maquina: durante `en-llamada` la FSM se queda donde
+     * esta aunque el broker caiga (§3.2), asi que `contexto.estado` no puede
+     * responder a esta pregunta. La interfaz lo necesita para avisar de que se
+     * ha perdido la presencia sin cortar la conversacion.
+     */
+    conectado = false;
+
     private directorio: Sede[] = [];
     private readonly presencia = new Map<string, EstadoSede>();
     private readonly interprete: Interprete;
@@ -113,8 +122,16 @@ export class Totem {
         jitsi.alUnirse(() => this.emitir({ tipo: 'jitsi-unido' }));
         jitsi.alCambiarMedios(() => this.op.alCambiar?.());
 
-        mqtt.alConectar(() => this.emitir({ tipo: 'broker-conectado' }));
-        mqtt.alDesconectar(() => this.emitir({ tipo: 'broker-desconectado' }));
+        // El flag se actualiza ANTES de emitir: `emitir` repinta, y el repintado
+        // tiene que ver ya el valor nuevo.
+        mqtt.alConectar(() => {
+            this.conectado = true;
+            this.emitir({ tipo: 'broker-conectado' });
+        });
+        mqtt.alDesconectar(() => {
+            this.conectado = false;
+            this.emitir({ tipo: 'broker-desconectado' });
+        });
         mqtt.alRecibirDirectorio(sedes => {
             this.directorio = sedes;
             this.op.alCambiar?.();
@@ -163,6 +180,7 @@ export class Totem {
         // totem no arrancara nunca, asi que hay que decirlo en pantalla.
         void this.op.mqtt.conectar().catch(error => {
             console.error('no se pudo iniciar la conexion MQTT', error);
+            this.conectado = false;
             this.emitir({ tipo: 'broker-desconectado' });
         });
     }

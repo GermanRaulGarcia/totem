@@ -20,7 +20,49 @@ describe('pantallas', () => {
         reloj: '10:00',
         microSilenciado: false,
         camaraApagada: false,
+        brokerConectado: true,
         ...parcial
+    });
+
+    describe('aviso de broker caido durante la llamada', () => {
+        const enLlamada = (brokerConectado: boolean): Vista =>
+            vista({ contexto: contextoEn('en-llamada'), brokerConectado });
+
+        it('no se ve mientras hay broker', () => {
+            render(raiz, enLlamada(true));
+            const aviso = raiz.querySelector<HTMLElement>('.aviso-sin-broker');
+            expect(aviso).not.toBeNull();
+            expect(aviso!.hidden).toBe(true);
+        });
+
+        it('se ve cuando el broker se ha caido', () => {
+            // Diseno §3.2: la llamada sigue, pero la interfaz tiene que decir que
+            // se ha perdido la presencia. Sin esto, un corte de senalizacion es
+            // indistinguible de que no pase nada.
+            render(raiz, enLlamada(false));
+            const aviso = raiz.querySelector<HTMLElement>('.aviso-sin-broker');
+            expect(aviso!.hidden).toBe(false);
+            expect(aviso!.textContent).toContain('Sin conexion');
+        });
+
+        it('INVARIANTE: aparecer y desaparecer NO destruye el iframe', () => {
+            // El repintado de `en-llamada` solo rehace el marcado si falta #jitsi.
+            // Si el aviso se pintara repintando la seccion, cada caida y cada
+            // reenganche del broker mataria el iframe A MITAD DE LLAMADA, que es
+            // justo lo contrario de lo que este aviso viene a documentar.
+            render(raiz, enLlamada(true));
+            const contenedor = raiz.querySelector('#jitsi');
+            const iframe = document.createElement('iframe');
+            contenedor!.appendChild(iframe);
+
+            render(raiz, enLlamada(false));
+            render(raiz, enLlamada(true));
+            render(raiz, enLlamada(false));
+
+            expect(raiz.querySelector('#jitsi')).toBe(contenedor);
+            expect(contenedor!.contains(iframe)).toBe(true);
+            expect(raiz.querySelector<HTMLElement>('.aviso-sin-broker')!.hidden).toBe(false);
+        });
     });
 
     it('en reposo muestra el reloj y la invitacion a tocar', () => {

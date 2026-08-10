@@ -40,6 +40,14 @@ export interface Vista {
     reloj: string;
     microSilenciado: boolean;
     camaraApagada: boolean;
+    /**
+     * Estado del TRANSPORTE, que no es el estado de la maquina.
+     *
+     * Durante `en-llamada` la FSM se queda donde esta aunque el broker caiga, a
+     * proposito (§3.2): el medio viaja por Jitsi. Por eso `contexto.estado` no
+     * sirve para saber si hay conexion, y hace falta este dato aparte.
+     */
+    brokerConectado: boolean;
 }
 
 function claseSede(s: EstadoSede): string {
@@ -152,6 +160,7 @@ export function render(raiz: HTMLElement, v: Vista): void {
             raiz.innerHTML = `
                 <section class="pantalla pantalla--llamada">
                     <div id="jitsi"></div>
+                    <p class="aviso-sin-broker" hidden>Sin conexion con el servidor</p>
                     <nav class="controles">
                         <button data-accion="micro" class="control">Micro</button>
                         <button data-accion="camara" class="control">Camara</button>
@@ -172,6 +181,13 @@ export function render(raiz: HTMLElement, v: Vista): void {
             camara.setAttribute('aria-pressed', String(v.camaraApagada));
             camara.classList.toggle('control--inactivo', v.camaraApagada);
         }
+        // Diseno §3.2: la llamada sobrevive a la caida del broker, pero la
+        // interfaz TIENE que indicarlo. Sin este aviso, un corte de senalizacion
+        // es indistinguible de que no pase nada, y quien esta delante no sabe que
+        // la otra sede ha dejado de verle disponible.
+        // Se conmuta, no se repinta: rehacer el marcado mataria el iframe.
+        const aviso = raiz.querySelector<HTMLElement>('.aviso-sin-broker');
+        if (aviso !== null) aviso.hidden = v.brokerConectado;
         return;
     }
 
