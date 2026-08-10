@@ -81,6 +81,39 @@ function efectosEntrarEnLlamada(sala: string): Efecto[] {
     ];
 }
 
+/**
+ * Lo que hay que apagar al entrar en `sin-conexion` desde cada estado.
+ *
+ * `sin-conexion` es transversal (diseno §5.3.2), pero llegar a el NO es gratis:
+ * se entra desde `seleccionando` con un temporizador armado, y desde `llamando`
+ * o `recibiendo` con un temporizador de 45 s Y un sonido en BUCLE. Devolver
+ * `efectos: []` dejaba el `setInterval` del timbre sonando cada 1,5-2,5 s para
+ * siempre -recuperable solo recargando un kiosco desatendido- y el temporizador
+ * vivo, disparando despues contra `inactivo`, que lo ignora en silencio.
+ *
+ * Aqui NO se publica nada por MQTT: el broker es justo lo que acaba de caerse.
+ * La presencia la arregla el `broker-conectado` del reenganche, que vuelve a
+ * `inactivo` y publica `libre`.
+ */
+function efectosAlPerderElBroker(estado: Estado): Efecto[] {
+    switch (estado) {
+        case 'seleccionando':
+            return [{ tipo: 'cancelar-timer', nombre: 'seleccion' }];
+        case 'llamando':
+            return [
+                { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
+                { tipo: 'parar-ringback' }
+            ];
+        case 'recibiendo':
+            return [
+                { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
+                { tipo: 'parar-timbre' }
+            ];
+        default:
+            return [];
+    }
+}
+
 export function transicion(ctx: Contexto, evento: Evento): Resultado {
     // Excepcion deliberada: durante 'en-llamada' o 'finalizando' NO se corta a sin-conexion
     // al caer el broker. Principio de desacoplamiento (diseno §3.2): la senalizacion viaja
@@ -92,7 +125,10 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
         ctx.estado !== 'en-llamada' &&
         ctx.estado !== 'finalizando'
     ) {
-        return { contexto: { ...ctx, estado: 'sin-conexion' }, efectos: [] };
+        return {
+            contexto: { ...ctx, estado: 'sin-conexion' },
+            efectos: efectosAlPerderElBroker(ctx.estado)
+        };
     }
 
     switch (ctx.estado) {

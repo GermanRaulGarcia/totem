@@ -522,3 +522,92 @@ describe('maquina de estados: invitacion durante el selector', () => {
         expect(r.efectos).toContainEqual({ tipo: 'crear-jitsi', sala: 'spm-call-1' });
     });
 });
+
+describe('maquina de estados: el broker cae con algo sonando', () => {
+    const seleccionando = () =>
+        transicion(contextoEn('inactivo'), { tipo: 'toque-pantalla' }).contexto;
+
+    const llamando = () =>
+        transicion(seleccionando(), { tipo: 'seleccion-confirmada', destino: 'murcia' }).contexto;
+
+    const recibiendo = () =>
+        transicion(contextoEn('inactivo'), {
+            tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia')
+        }).contexto;
+
+    it('desde recibiendo para el timbre y cancela el temporizador de 45 s', () => {
+        // El fallo que arregla esto: `sin-conexion` se alcanzaba con `efectos: []`,
+        // asi que el `setInterval` del timbre seguia sonando cada 1,5 s para
+        // siempre y solo se recuperaba recargando el kiosco.
+        const r = transicion(recibiendo(), { tipo: 'broker-desconectado' });
+        expect(r.contexto.estado).toBe('sin-conexion');
+        expect(r.efectos).toEqual([
+            { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
+            { tipo: 'parar-timbre' }
+        ]);
+    });
+
+    it('desde llamando para el ringback y cancela el temporizador de 45 s', () => {
+        const r = transicion(llamando(), { tipo: 'broker-desconectado' });
+        expect(r.contexto.estado).toBe('sin-conexion');
+        expect(r.efectos).toEqual([
+            { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
+            { tipo: 'parar-ringback' }
+        ]);
+    });
+
+    it('desde seleccionando cancela el temporizador de inactividad', () => {
+        const r = transicion(seleccionando(), { tipo: 'broker-desconectado' });
+        expect(r.contexto.estado).toBe('sin-conexion');
+        expect(r.efectos).toEqual([{ tipo: 'cancelar-timer', nombre: 'seleccion' }]);
+    });
+
+    it('no publica nada por MQTT: el broker es justo lo que se ha caido', () => {
+        for (const ctx of [seleccionando(), llamando(), recibiendo()]) {
+            const r = transicion(ctx, { tipo: 'broker-desconectado' });
+            expect(r.efectos.filter(e => e.tipo.startsWith('publicar-'))).toEqual([]);
+        }
+    });
+
+    it('desde inactivo y arrancando no hay nada que apagar', () => {
+        for (const ctx of [contextoEn('inactivo'), contextoInicial()]) {
+            expect(transicion(ctx, { tipo: 'broker-desconectado' }).efectos).toEqual([]);
+        }
+    });
+
+    it('INVARIANTE: ningun sonido arrancado sobrevive a la vuelta a inactivo', () => {
+        // Recorre las dos vias que dejan un bucle sonando y comprueba el
+        // emparejamiento sonar/parar de punta a punta, incluido el reenganche.
+        const vias: Evento[][] = [
+            [
+                { tipo: 'invitacion-recibida', invitacion: invitacionDe('murcia') },
+                { tipo: 'broker-desconectado' },
+                { tipo: 'broker-conectado' }
+            ],
+            [
+                { tipo: 'toque-pantalla' },
+                { tipo: 'seleccion-confirmada', destino: 'murcia' },
+                { tipo: 'broker-desconectado' },
+                { tipo: 'broker-conectado' }
+            ]
+        ];
+        for (const via of vias) {
+            let ctx = contextoEn('inactivo');
+            let sonando = 0;
+            let timers = 0;
+            for (const ev of via) {
+                const r = transicion(ctx, ev);
+                ctx = r.contexto;
+                for (const efecto of r.efectos) {
+                    if (efecto.tipo === 'sonar-timbre' || efecto.tipo === 'sonar-ringback') sonando++;
+                    if (efecto.tipo === 'parar-timbre' || efecto.tipo === 'parar-ringback') sonando--;
+                    if (efecto.tipo === 'arrancar-timer') timers++;
+                    if (efecto.tipo === 'cancelar-timer') timers--;
+                }
+            }
+            expect(ctx.estado).toBe('inactivo');
+            expect(sonando).toBe(0);
+            expect(timers).toBe(0);
+        }
+    });
+});
