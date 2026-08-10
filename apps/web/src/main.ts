@@ -2,6 +2,7 @@ import type { NombreTimer } from './core/tipos';
 import { ClienteMqtt } from './mqtt/cliente-mqtt';
 import { SesionJitsi, type ApiJitsi } from './jitsi/sesion-jitsi';
 import type { Sonidos, Temporizadores } from './runtime/interprete';
+import { RecargaPreventiva } from './runtime/recarga-preventiva';
 import { Totem } from './runtime/totem';
 import { enrutarToque, render } from './ui/pantallas';
 
@@ -78,6 +79,15 @@ const fabricaJitsi = (sala: string, contenedor: HTMLElement, displayName: string
         configOverwrite: {
             startWithAudioMuted: false,
             prejoinPageEnabled: false,
+            // Vista de orador: la otra sede grande y uno mismo en miniatura. Con
+            // llamadas 1 a 1 es lo que Jitsi hace por defecto, pero se declara
+            // para no depender de que ese defecto siga siendo el mismo manana.
+            // La clave es `disableTileView`; `enterTileView` no existe en Jitsi.
+            disableTileView: true,
+            // Sin esto Jitsi esconde el filmstrip -y con el la miniatura propia-
+            // porque el panel es vertical y entra en su umbral de "pantalla estrecha".
+            disableFilmstripAutohiding: true,
+            disableSelfView: false,
             toolbarButtons: []
         },
         interfaceConfigOverwrite: { TOOLBAR_BUTTONS: [], SHOW_JITSI_WATERMARK: false }
@@ -102,7 +112,8 @@ function pintar(): void {
         seleccion: totem.seleccion,
         reloj: reloj(),
         microSilenciado: jitsi.silenciado,
-        camaraApagada: jitsi.camaraOculta
+        camaraApagada: jitsi.camaraOculta,
+        brokerConectado: totem.conectado
     });
 }
 
@@ -145,6 +156,13 @@ raiz.addEventListener('click', ev => {
 setInterval(pintar, 1_000);
 pintar();
 totem.arrancar();
+
+// Diseno §3.3: higiene preventiva contra la fuga de memoria de Chromium en
+// sesiones de semanas. Espera a que el totem no tenga nada que interrumpir.
+new RecargaPreventiva({
+    estado: () => totem.contexto.estado,
+    recargar: () => location.reload()
+}).arrancar();
 
 // 'pagehide' es el ultimo momento fiable para despedirse en un navegador
 // ('unload' ya no lo garantiza Chrome). Sin esto la retraccion de presencia no
