@@ -220,12 +220,33 @@ html, body {
  * un `aspect-ratio` de la tabla. */
 .pantalla--llamada {
     height: 100dvh; padding: 0;
+    background: #000;
     /* Ancla de los dos elementos que flotan sobre el video. */
     position: relative;
 }
 /* El video ocupa la pantalla entera. La botonera y la miniatura ya no le quitan
    sitio: van encima, en las esquinas de arriba. */
-#jitsi { position: absolute; inset: 0; background: #000; overflow: hidden; }
+/* Anclado ARRIBA y con proporcion 4:5, no a pantalla completa.
+ *
+ * Jitsi rellena su contenedor recortando, asi que la altura de esta caja decide
+ * cuanta oficina se ve. En un panel de 2160x3840:
+ *
+ *   Proporcion   Pantalla ocupada   Ancho de camara visible
+ *   16:9                32 %                 100 %
+ *   1:1                 56 %                  56 %
+ *   4:5 (esto)          70 %                  45 %
+ *   9:16 completa       100 %                 32 %
+ *
+ * Se probo a pantalla completa y el recorte dejaba una franja demasiado estrecha
+ * de la otra oficina. 4:5 recupera casi la mitad del ancho perdiendo poco tamaño.
+ * Moverse por la tabla es cambiar este unico valor. */
+#jitsi {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    aspect-ratio: 4 / 5;
+    background: #000;
+    overflow: hidden;
+}
 
 /* El iframe, en BLOQUE. Por defecto es un elemento en linea, asi que el navegador
    le reserva el hueco del descendente de la linea y un iframe con height 100%
@@ -247,13 +268,12 @@ html, body {
     position: absolute;
     top: 1.5rem;
     left: 1.5rem;
-    /* Vertical, no con la forma de la camara. La camara captura 16:9, asi que
-       `cover` recorta los lados y deja el centro del encuadre. Se pierde ancho de
-       la propia oficina, pero esta miniatura solo sirve para comprobar que uno
-       sale bien en cuadro, y uno esta en el centro. Ademas asi acompaña la
-       orientacion del panel en vez de contradecirla. */
-    width: clamp(6rem, 13dvw, 10rem);
-    aspect-ratio: 9 / 16;
+    /* Vertical, pero no tanto como 9:16: ahi el recorte dejaba ver solo un 32 %
+       del ancho de la camara y se veia "muy centrada". Con 3:4 se ve un 42 % y
+       sigue acompañando la orientacion del panel. Mismo compromiso que el video
+       grande y misma palanca: cuanto mas alta la caja, menos ancho queda. */
+    width: clamp(7rem, 15dvw, 12rem);
+    aspect-ratio: 3 / 4;
     object-fit: cover;
     background: #000;
     border-radius: 0.75rem;
