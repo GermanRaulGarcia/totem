@@ -1,5 +1,4 @@
 import {
-    MS_TIMEOUT_SELECCION,
     MS_TIMEOUT_SIN_RESPUESTA,
     MS_TIMEOUT_UNION_JITSI,
     type Contexto, type Efecto, type Estado, type Evento, type Resultado
@@ -85,11 +84,11 @@ function efectosEntrarEnLlamada(sala: string): Efecto[] {
  * Lo que hay que apagar al entrar en `sin-conexion` desde cada estado.
  *
  * `sin-conexion` es transversal (diseno §5.3.2), pero llegar a el NO es gratis:
- * se entra desde `seleccionando` con un temporizador armado, y desde `llamando`
- * o `recibiendo` con un temporizador de 45 s Y un sonido en BUCLE. Devolver
- * `efectos: []` dejaba el `setInterval` del timbre sonando cada 1,5-2,5 s para
- * siempre -recuperable solo recargando un kiosco desatendido- y el temporizador
- * vivo, disparando despues contra `inactivo`, que lo ignora en silencio.
+ * se entra desde `llamando` o `recibiendo` con un temporizador de 45 s Y un
+ * sonido en BUCLE. Devolver `efectos: []` dejaba el `setInterval` del timbre
+ * sonando cada 1,5-2,5 s para siempre -recuperable solo recargando un kiosco
+ * desatendido- y el temporizador vivo, disparando despues contra `inactivo`,
+ * que lo ignora en silencio.
  *
  * Aqui NO se publica nada por MQTT: el broker es justo lo que acaba de caerse.
  * La presencia la arregla el `broker-conectado` del reenganche, que vuelve a
@@ -97,8 +96,6 @@ function efectosEntrarEnLlamada(sala: string): Efecto[] {
  */
 function efectosAlPerderElBroker(estado: Estado): Efecto[] {
     switch (estado) {
-        case 'seleccionando':
-            return [{ tipo: 'cancelar-timer', nombre: 'seleccion' }];
         case 'llamando':
             return [
                 { tipo: 'cancelar-timer', nombre: 'sin-respuesta' },
@@ -144,48 +141,14 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
             // enterarse; sin esta rama la sede quedaria sin estado retenido, es
             // decir invisible o congelada en el ultimo valor que vieron las demas.
             if (evento.tipo === 'broker-conectado') return irAInactivo(ctx);
-            if (evento.tipo === 'toque-pantalla') {
-                return {
-                    contexto: { ...ctx, estado: 'seleccionando' },
-                    efectos: [{ tipo: 'arrancar-timer', nombre: 'seleccion', ms: MS_TIMEOUT_SELECCION }]
-                };
-            }
-            if (evento.tipo === 'invitacion-recibida') {
-                const { callId, sala, origen } = evento.invitacion;
-                return {
-                    contexto: { ...ctx, estado: 'recibiendo', callId, sala, origen },
-                    efectos: [
-                        { tipo: 'sonar-timbre' },
-                        { tipo: 'arrancar-timer', nombre: 'sin-respuesta', ms: MS_TIMEOUT_SIN_RESPUESTA }
-                    ]
-                };
-            }
-            return sinCambios(ctx);
-
-        case 'seleccionando': {
-            if (evento.tipo === 'timeout-seleccion' || evento.tipo === 'cancelar') {
-                return irAInactivo(ctx, [{ tipo: 'cancelar-timer', nombre: 'seleccion' }]);
-            }
-            // Decision: una invitacion entrante EXPULSA al selector, no se encola.
-            // Motivo: al otro lado hay una persona esperando en tiempo real con un
-            // temporizador de 45 s corriendo, mientras que el selector es por
-            // definicion una intencion sin confirmar y sin nadie esperando. Encolarla
-            // haria que el llamante agotase los 45 s en silencio y que el timbre
-            // sonara despues, para una llamada que ya no existe: el peor de los dos
-            // mundos. Un telefono que suena interrumpe lo que estabas marcando.
-            if (evento.tipo === 'invitacion-recibida') {
-                const { callId, sala, origen } = evento.invitacion;
-                return {
-                    contexto: { ...ctx, estado: 'recibiendo', callId, sala, origen },
-                    efectos: [
-                        { tipo: 'cancelar-timer', nombre: 'seleccion' },
-                        { tipo: 'sonar-timbre' },
-                        { tipo: 'arrancar-timer', nombre: 'sin-respuesta', ms: MS_TIMEOUT_SIN_RESPUESTA }
-                    ]
-                };
-            }
-            // Un destino, no una lista: negocio retiro la llamada multi-sede el
-            // 2026-07-31. La eleccion de A QUE sede se llama se mantiene intacta.
+            // Se llama DESDE reposo, tocando Llamar en la tarjeta de la sede. La
+            // pantalla de seleccion se retiro el 2026-08-10: mostraba las mismas
+            // tarjetas que ya estaba viendo el usuario y convertia una llamada en
+            // tres toques, cuando el sistema al que sustituye la hace en uno.
+            //
+            // Un destino, no una lista: negocio retiro el multi-sede el 2026-07-31.
+            // Elegir A QUE sede se llama se mantiene intacto; lo que desaparecio es
+            // la pantalla intermedia para elegirla.
             if (evento.tipo === 'seleccion-confirmada') {
                 const callId = generarCallId();
                 const sala = `spm-${callId}`;
@@ -199,7 +162,6 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
                         par: null
                     },
                     efectos: [
-                        { tipo: 'cancelar-timer', nombre: 'seleccion' },
                         { tipo: 'publicar-invitacion', callId, sala, destino: evento.destino },
                         { tipo: 'publicar-estado', disponibilidad: 'ocupado', callId },
                         { tipo: 'sonar-ringback' },
@@ -207,8 +169,17 @@ export function transicion(ctx: Contexto, evento: Evento): Resultado {
                     ]
                 };
             }
+            if (evento.tipo === 'invitacion-recibida') {
+                const { callId, sala, origen } = evento.invitacion;
+                return {
+                    contexto: { ...ctx, estado: 'recibiendo', callId, sala, origen },
+                    efectos: [
+                        { tipo: 'sonar-timbre' },
+                        { tipo: 'arrancar-timer', nombre: 'sin-respuesta', ms: MS_TIMEOUT_SIN_RESPUESTA }
+                    ]
+                };
+            }
             return sinCambios(ctx);
-        }
 
         case 'llamando': {
             // Solo el destino de ESTA llamada puede contestarla. El filtro por

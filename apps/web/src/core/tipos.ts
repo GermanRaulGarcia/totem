@@ -47,10 +47,16 @@ export interface EventoLlamada {
     ts: string;
 }
 
+/**
+ * `seleccionando` se retiro el 2026-08-10. La pantalla de reposo ya mostraba
+ * todas las sedes con su estado, asi que una pantalla aparte para elegir entre
+ * las mismas tarjetas no aportaba nada y convertia una llamada en tres toques,
+ * cuando el sistema antiguo la hacia en uno. Ahora se llama desde la propia
+ * tarjeta. Ver el diseno §5.2.
+ */
 export type Estado =
     | 'arrancando'
     | 'inactivo'
-    | 'seleccionando'
     | 'llamando'
     | 'recibiendo'
     | 'en-llamada'
@@ -60,10 +66,9 @@ export type Estado =
 export type Evento =
     | { tipo: 'broker-conectado' }
     | { tipo: 'broker-desconectado' }
-    | { tipo: 'toque-pantalla' }
+    /** Se emite al tocar Llamar en la tarjeta de una sede, desde reposo. */
     | { tipo: 'seleccion-confirmada'; destino: string }
     | { tipo: 'cancelar' }
-    | { tipo: 'timeout-seleccion' }
     | { tipo: 'invitacion-recibida'; invitacion: Invitacion }
     | { tipo: 'aceptar' }
     | { tipo: 'rechazar' }
@@ -91,7 +96,7 @@ export type Efecto =
     | { tipo: 'cancelar-timer'; nombre: NombreTimer }
     | { tipo: 'registrar-perdida'; origen: string };
 
-export type NombreTimer = 'seleccion' | 'sin-respuesta' | 'union-jitsi';
+export type NombreTimer = 'sin-respuesta' | 'union-jitsi';
 
 /**
  * Una llamada tiene como mucho DOS sedes (negocio, 2026-07-31). Por eso aqui no
@@ -118,7 +123,6 @@ export interface Resultado {
     efectos: Efecto[];
 }
 
-export const MS_TIMEOUT_SELECCION = 30_000;
 export const MS_TIMEOUT_SIN_RESPUESTA = 45_000;
 /** Diseno §5.4: si `videoConferenceJoined` no llega en 15 s se aborta y se vuelve a reposo. */
 export const MS_TIMEOUT_UNION_JITSI = 15_000;

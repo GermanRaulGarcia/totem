@@ -141,7 +141,6 @@ export class Interprete {
 
 function eventoDeTimer(nombre: NombreTimer): Evento {
     switch (nombre) {
-        case 'seleccion': return { tipo: 'timeout-seleccion' };
         case 'sin-respuesta': return { tipo: 'sin-respuesta' };
         case 'union-jitsi': return { tipo: 'jitsi-fallo' };
         default: {

@@ -55,8 +55,8 @@ describe('recarga preventiva', () => {
         expect(b.recargas()).toBe(1);
     });
 
-    it('tampoco recarga con el selector abierto, sonando o finalizando', () => {
-        const ocupados: Estado[] = ['seleccionando', 'llamando', 'recibiendo', 'finalizando'];
+    it('tampoco recarga sonando ni finalizando', () => {
+        const ocupados: Estado[] = ['llamando', 'recibiendo', 'finalizando'];
         for (const estado of ocupados) {
             const b = banco(estado);
             b.avanzar(MS_RECARGA_PREVENTIVA * 2);

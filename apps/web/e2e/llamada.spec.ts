@@ -43,20 +43,20 @@ test('una llamada de Lorca a Murcia se establece y se cuelga', async ({ browser 
     await abrirTotem(lorca, 'lorca');
     await abrirTotem(murcia, 'murcia');
 
-    // Lorca ve a Murcia disponible.
-    await expect(lorca.locator('[data-sede="murcia"]')).toContainText('Disponible');
+    // Lorca ve a Murcia disponible en su tarjeta de reposo.
+    await expect(lorca.locator('.sede', { hasText: 'murcia' })).toContainText('Disponible');
 
-    // Lorca llama a Murcia. El primer toque va sobre la TARJETA de sede, el
-    // objetivo mas grande de la pantalla de reposo, que antes se tragaba el toque.
+    // Lorca llama a Murcia DESDE REPOSO, en un solo toque. La pantalla de
+    // seleccion se retiro el 2026-08-10: la de reposo ya mostraba estas mismas
+    // tarjetas, asi que una pantalla intermedia para elegir entre ellas convertia
+    // una llamada en tres toques cuando el sistema al que sustituye la hace en uno.
+    //
     // Se usa `dispatchEvent` y no `click()` a proposito: `click()` exige que el
-    // elemento sea "actionable" y la tarjeta inerte tiene `pointer-events: none` y
-    // hereda la animacion anti burn-in, asi que Playwright la rechazaria. Lo que
-    // aqui se prueba es justo lo contrario: que el enrutado del click delegado
-    // funcione por ESTRUCTURA del DOM, sin depender de la hoja de estilos.
+    // elemento sea "actionable" y la tarjeta hereda la animacion anti burn-in, asi
+    // que Playwright la rechazaria por estar en movimiento. Lo que aqui se prueba
+    // es el enrutado del click delegado por ESTRUCTURA del DOM, sin depender de la
+    // hoja de estilos.
     await lorca.locator('[data-sede="murcia"]').dispatchEvent('click');
-    await expect(lorca.locator('.pantalla--seleccion')).toBeVisible();
-    await lorca.locator('[data-sede="murcia"]').click();
-    await lorca.locator('[data-accion="llamar"]').click();
     await expect(lorca.locator('.pantalla--llamando')).toBeVisible();
 
     // Mientras suena, Lorca NO ha creado el iframe, y ve a Murcia sonando.

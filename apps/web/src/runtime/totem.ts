@@ -25,9 +25,6 @@ export interface OpcionesTotem {
  */
 export class Totem {
     contexto: Contexto = contextoInicial();
-    /** A lo sumo UNA sede elegida: las llamadas son 1 a 1 (negocio, 2026-07-31). */
-    seleccion: string | null = null;
-
     /**
      * Hay broker AHORA MISMO. Es estado del TRANSPORTE y por eso vive aqui y no
      * en el contexto de la maquina: durante `en-llamada` la FSM se queda donde
@@ -83,35 +80,24 @@ export class Totem {
 
     emitir(evento: Evento): void {
         const resultado = transicion(this.contexto, evento);
-        const cambio = resultado.contexto !== this.contexto;
         this.contexto = resultado.contexto;
-        if (cambio) this.seleccion = null;
         this.op.alCambiar?.();
         void this.interprete.ejecutar(resultado.efectos);
     }
 
     /**
-     * Elegir una sede SUSTITUYE a la anterior; volver a tocar la misma la
-     * deselecciona. No acumula: nunca puede haber dos destinos.
-     */
-    alternarSeleccion(sede: string): void {
-        this.seleccion = this.seleccion === sede ? null : sede;
-        this.op.alCambiar?.();
-    }
-
-    /**
-     * La sede elegida SI sigue siendo llamable, y `null` en cualquier otro caso.
+     * ¿Se puede llamar a esta sede AHORA MISMO?
      *
-     * `seleccion` ya se limpia sola cuando cambia la presencia, pero eso depende
-     * de que el mensaje MQTT llegue antes que el toque. Esta es la comprobacion
-     * que manda, la que se hace en el instante de pulsar Llamar y contra la
-     * presencia vigente en ese instante.
+     * El boton solo se pinta para las sedes llamables, pero eso es una propiedad
+     * del marcado en el instante del ultimo repintado, no una garantia. Entre ese
+     * repintado y el dedo cabe un mensaje MQTT: la sede puede haber colgado el
+     * cartel de ocupada o haberse caido de la red. Sin esta comprobacion, la
+     * invitacion saldria hacia un totem que ya no puede contestarla y el llamante
+     * se comeria 45 s de "Sonando..." para nadie.
      */
-    destinoElegible(): string | null {
-        const elegida = this.seleccion;
-        if (elegida === null) return null;
-        const estado = this.sedes().find(s => s.sede === elegida);
-        return estado !== undefined && esLlamable(estado) ? elegida : null;
+    esLlamableAhora(sede: string): boolean {
+        const estado = this.sedes().find(s => s.sede === sede);
+        return estado !== undefined && esLlamable(estado);
     }
 
     /** Registra los callbacks y abre la conexion. No espera al primer CONNACK. */
@@ -139,13 +125,10 @@ export class Totem {
         mqtt.alCambiarEstadoSede(estado => {
             if (estado.sede === this.op.sede) return;
             this.presencia.set(estado.sede, estado);
-            // Si la sede elegida deja de ser llamable mientras el usuario duda
-            // delante del panel, la eleccion se cae con ella. Sin esto la tarjeta
-            // se pintaba gris y deshabilitada pero la seleccion seguia viva, y
-            // Llamar lanzaba la invitacion a un totem que ya no podia contestarla.
-            if (this.seleccion === estado.sede && !esLlamable(estado)) {
-                this.seleccion = null;
-            }
+            // Repintar hace desaparecer el boton Llamar de una sede que acaba de
+            // ocuparse o caerse. La comprobacion que manda sigue siendo
+            // `esLlamableAhora` en el instante del toque: esto solo evita ofrecer
+            // lo que ya no se puede hacer.
             this.op.alCambiar?.();
         });
         mqtt.alRecibirInvitacion(invitacion => {
