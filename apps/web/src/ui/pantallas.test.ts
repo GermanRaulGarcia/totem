@@ -16,7 +16,9 @@ describe('pantallas', () => {
     const vista = (parcial: Partial<Vista>): Vista => ({
         contexto: contextoEn('inactivo'),
         sedes: [sede('murcia', true)],
+        propia: { sede: 'lorca', nombre: 'Lorca' },
         reloj: '10:00',
+        horas: {},
         microSilenciado: false,
         camaraApagada: false,
         brokerConectado: true,
@@ -144,8 +146,10 @@ describe('pantallas', () => {
     });
 
     describe('distintivo de sede', () => {
+        // Acotado a la TARJETA: la cabecera lleva otro distintivo, el de la propia
+        // sede, y sin acotar el selector cogeria ese.
         const logo = (raiz: HTMLElement) =>
-            raiz.querySelector<HTMLImageElement>('img.sede__distintivo')!;
+            raiz.querySelector<HTMLImageElement>('.sede img.sede__distintivo')!;
 
         it('apunta al logotipo de esa sede, y solo a ese', () => {
             // Se intento el respaldo con dos fondos CSS apilados y estaba mal:
@@ -154,7 +158,7 @@ describe('pantallas', () => {
             // propio y todas las sedes salian con los dibujos superpuestos.
             render(raiz, vista({ sedes: [sede('canarias', true)] }));
             expect(logo(raiz).getAttribute('src')).toBe('/marca/sedes/canarias.svg');
-            expect(raiz.querySelectorAll('img.sede__distintivo')).toHaveLength(1);
+            expect(raiz.querySelectorAll('.sede img.sede__distintivo')).toHaveLength(1);
         });
 
         it('si no hay SVG prueba el PNG, y solo despues el generico', () => {
@@ -228,6 +232,59 @@ describe('pantallas', () => {
             expect(clases[0]).toContain('sede--libre');
             expect(clases[1]).toContain('sede--ocupada');
             expect(clases[2]).toContain('sede--offline');
+        });
+    });
+
+    describe('identidad del propio totem', () => {
+        it('en reposo dice de que sede es, con su logotipo', () => {
+            render(raiz, vista({ propia: { sede: 'canarias', nombre: 'Gran Canaria' } }));
+            const cabecera = raiz.querySelector('.identidad')!;
+            expect(cabecera.textContent).toContain('Gran Canaria');
+            expect(
+                cabecera.querySelector<HTMLImageElement>('.identidad__sede img')!.getAttribute('src')
+            ).toBe('/marca/sedes/canarias.svg');
+        });
+
+        it('la propia sede NO aparece ademas entre las tarjetas llamables', () => {
+            // `Totem.sedes()` ya la excluye; esto fija que la cabecera no la
+            // reintroduce por la puerta de atras. Nadie se llama a si mismo.
+            render(raiz, vista({
+                propia: { sede: 'lorca', nombre: 'Lorca' },
+                sedes: [sede('murcia', true)]
+            }));
+            expect(raiz.querySelector('[data-sede="lorca"]')).toBeNull();
+        });
+    });
+
+    describe('hora local de la sede', () => {
+        it('se pinta en la tarjeta de la sede que la trae', () => {
+            render(raiz, vista({
+                sedes: [sede('canarias', true)],
+                horas: { canarias: '09:00' }
+            }));
+            expect(raiz.querySelector('.sede__hora')!.textContent).toBe('09:00');
+        });
+
+        it('no se pinta en las sedes que no la traen', () => {
+            // `horasDeSedes` solo incluye las que difieren de la hora de aqui, asi
+            // que la tarjeta no decide nada: pinta lo que le llega o no pinta nada.
+            render(raiz, vista({
+                sedes: [sede('lorca', true), sede('canarias', true)],
+                horas: { canarias: '09:00' }
+            }));
+            const conHora = [...raiz.querySelectorAll('.sede')]
+                .filter(n => n.querySelector('.sede__hora') !== null)
+                .map(n => n.querySelector('.sede__nombre')!.textContent);
+            expect(conHora).toEqual(['CANARIAS']);
+        });
+
+        it('un cambio de hora repinta la pantalla de reposo', () => {
+            // El atajo de reposo solo refresca el reloj grande mientras la firma no
+            // cambie. Sin la hora dentro de la firma, la de la sede se quedaria
+            // congelada en el minuto en que se pinto por primera vez.
+            render(raiz, vista({ sedes: [sede('canarias', true)], horas: { canarias: '09:00' } }));
+            render(raiz, vista({ sedes: [sede('canarias', true)], horas: { canarias: '09:01' } }));
+            expect(raiz.querySelector('.sede__hora')!.textContent).toBe('09:01');
         });
     });
 

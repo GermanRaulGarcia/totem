@@ -42,7 +42,18 @@ export function enrutarToque(objetivo: EventTarget | null): Toque | null {
 export interface Vista {
     contexto: Contexto;
     sedes: EstadoSede[];
+    /**
+     * Quien es ESTE totem. No sale de `sedes`, que lista a las OTRAS: la propia
+     * se excluye ahi a proposito, porque nadie se llama a si mismo.
+     */
+    propia: { sede: string; nombre: string };
     reloj: string;
+    /**
+     * Hora local por sede, SOLO para las que no coinciden con la de aqui. Ver
+     * `horasDeSedes`: repetir la misma hora en todas las tarjetas entierra el
+     * unico dato que importa.
+     */
+    horas: Record<string, string>;
     microSilenciado: boolean;
     camaraApagada: boolean;
     /**
@@ -120,8 +131,8 @@ export const LOGO_GENERICO = '/marca/sedes/generica.svg';
  * Es lo que sostiene la promesa del §9.2: publicas `config/sedes` y la sede nueva
  * aparece el mismo dia con un icono digno, sin esperar a que nadie dibuje nada.
  */
-function distintivo(s: EstadoSede): string {
-    if (!ID_PARA_URL.test(s.sede)) {
+function distintivo(id: string): string {
+    if (!ID_PARA_URL.test(id)) {
         return `<img class="sede__distintivo" src="${LOGO_GENERICO}" alt="">`;
     }
     // SVG primero por calidad -escala sin pixelarse en un panel 4K- pero se
@@ -129,8 +140,8 @@ function distintivo(s: EstadoSede): string {
     // mapa de bits seria pedirle a operaciones una herramienta de diseno para
     // cambiar un icono.
     const [primero, ...respaldo] = [
-        `/marca/sedes/${s.sede}.svg`,
-        `/marca/sedes/${s.sede}.png`,
+        `/marca/sedes/${id}.svg`,
+        `/marca/sedes/${id}.png`,
         LOGO_GENERICO
     ];
     return `<img class="sede__distintivo" src="${primero}"
@@ -206,9 +217,11 @@ function tarjetas(v: Vista): string {
         <div class="${claseSede(s)}" role="group"
              aria-label="${escapar(s.nombre)}: ${textoEstado(s)}">
             <div class="sede__cabecera">
-                ${distintivo(s)}
+                ${distintivo(s.sede)}
                 <span class="sede__nombre">${escapar(s.nombre)}</span>
             </div>
+            ${v.horas[s.sede] === undefined ? '' : `
+            <span class="sede__hora">${escapar(v.horas[s.sede]!)}</span>`}
             ${boton(s)}
         </div>`).join('');
 }
@@ -237,12 +250,15 @@ let firmaReposo: string | null = null;
 export function render(raiz: HTMLElement, v: Vista): void {
     if (v.contexto.estado !== 'inactivo') firmaReposo = null;
 
-    // El contenedor de video se conserva entre renders: destruirlo mataria el iframe.
+    // El contenedor de video se conserva entre renders: destruirlo mataria el
+    // iframe. `#autovista` es donde `AutoVista` engancha la camara propia, y lleva
+    // `muted` por obligacion: sin el, el equipo se oiria a si mismo con retardo.
     if (v.contexto.estado === 'en-llamada') {
         if (raiz.querySelector('#jitsi') === null) {
             raiz.innerHTML = `
                 <section class="pantalla pantalla--llamada">
                     <div id="jitsi"></div>
+                    <video id="autovista" autoplay muted playsinline></video>
                     <p class="aviso-sin-broker" hidden>Sin conexion con el servidor</p>
                     <nav class="controles">
                         <button data-accion="micro" class="control" aria-label="Microfono"></button>
@@ -296,8 +312,11 @@ export function render(raiz: HTMLElement, v: Vista): void {
             // prevencion de burn-in (§6.1) nunca llegaria a desplazar nada en un
             // panel encendido de forma permanente. Mientras el resto del contenido
             // no cambie, solo se toca el textContent del reloj.
+            // La hora de cada sede entra en la firma: si no, cambiaria de minuto
+            // sin que nada la repintara, porque el atajo de abajo solo refresca el
+            // reloj grande. Se quedaria congelada hasta que otra cosa cambiara.
             const firma = JSON.stringify(
-                v.sedes.map(s => [s.sede, s.nombre, s.online, s.disponibilidad])
+                v.sedes.map(s => [s.sede, s.nombre, s.online, s.disponibilidad, v.horas[s.sede]])
             );
             const marcador = raiz.querySelector<HTMLElement>('.pantalla--reposo .reloj');
             if (marcador !== null && firma === firmaReposo) {
@@ -307,7 +326,13 @@ export function render(raiz: HTMLElement, v: Vista): void {
             firmaReposo = firma;
             raiz.innerHTML = `
                 <section class="pantalla pantalla--reposo">
-                    <img class="marca" src="/marca/victoria-crea.png" alt="Victoria Crea">
+                    <header class="identidad">
+                        <img class="marca" src="/marca/victoria-crea.png" alt="Victoria Crea">
+                        <p class="identidad__sede">
+                            ${distintivo(v.propia.sede)}
+                            <span>${escapar(v.propia.nombre)}</span>
+                        </p>
+                    </header>
                     <p class="reloj">${escapar(v.reloj)}</p>
                     <div class="sedes">${tarjetas(v)}</div>
                 </section>`;

@@ -77,6 +77,14 @@ html, body {
    falta explicarla: solo las sedes llamables tienen boton.
    El texto sigue existiendo en el `aria-label` de la tarjeta, que es donde
    importa para quien no ve el color. */
+/* Solo aparece en las sedes con hora distinta a la de aqui: es una advertencia,
+   no un reloj. Por eso va en ambar y no en el color del texto normal. */
+.sede__hora {
+    font-size: 0.62em;
+    color: var(--ambar);
+    font-variant-numeric: tabular-nums;
+}
+
 .sede--libre { border-color: var(--verde); }
 .sede--ocupada { border-color: var(--ambar); }
 .sede--offline { opacity: 0.4; }
@@ -143,11 +151,27 @@ html, body {
    fichero de marca que puede cambiar sin avisarnos. Discreto a proposito: en
    reposo manda el reloj, no la marca. */
 .marca {
-    height: clamp(5rem, 4dvh, 3rem);
+    /* Estaba `clamp(5rem, 4dvh, 3rem)`, con el minimo por encima del maximo: eso
+       devuelve siempre 5rem y no escala nunca. Mismo fallo que tenia `.sede`. */
+    height: clamp(2.5rem, 7dvh, 5rem);
     width: auto;
     opacity: 0.55;
     filter: brightness(0) invert(1);
 }
+
+/* Cabecera de reposo: la marca y DE QUE SEDE es este totem. Lo segundo importa
+   mas de lo que parece en mantenimiento: entrando en remoto a tres maquinas
+   iguales, saber cual tienes delante sin mirar la URL evita equivocaciones. */
+.identidad {
+    display: flex; flex-direction: column; align-items: center; gap: 0.7rem;
+}
+.identidad__sede {
+    margin: 0;
+    display: flex; align-items: center; gap: 0.5em;
+    font-size: clamp(1rem, 2.4dvw, 1.9rem);
+    letter-spacing: 0.02em;
+}
+.identidad__sede .sede__distintivo { width: 1.3em; height: 1.3em; }
 
 /* Prevencion de burn-in en un panel encendido de forma permanente. */
 @keyframes deriva {
@@ -164,22 +188,59 @@ html, body {
     animation: latido 1.2s ease-in-out infinite;
 }
 
-/* Caja 16:9 arriba, no la pantalla entera.
+/* El video ocupa todo lo alto menos la botonera.
  *
- * El panel es VERTICAL (9:16) y las camaras son APAISADAS (16:9). Para llenar el
- * panel con esa imagen, Jitsi la recorta por los lados en un factor de 3,16: se
- * veia un tercio de la otra oficina, una franja estrecha. Dandole una caja con la
- * proporcion de la camara, la otra sede se ve ENTERA, y el hueco de abajo queda
- * para la botonera en vez de para recorte. */
+ * Aqui hay un conflicto que no se puede ganar: el panel es VERTICAL (9:16) y las
+ * camaras son APAISADAS (16:9). Jitsi rellena su contenedor recortando, asi que
+ * cuanto mas alta sea la caja, mas grande se ve el video y menos ancho de camara
+ * queda. En un panel de 2160x3840:
+ *
+ *   Alto de la caja   Pantalla ocupada   Ancho de camara visible
+ *   1215 px (16:9)          32 %                  100 %
+ *   2160 px (1:1)           56 %                   56 %
+ *   2700 px (4:5)           70 %                   45 %
+ *   ~3400 px (esto)         88 %                   36 %
+ *
+ * Se probo la caja 16:9 -camara entera, sin un pixel recortado- y en el panel
+ * real la imagen quedaba en un tercio de la pantalla: demasiado pequeña. Se elige
+ * el otro extremo por una razon de uso, no de estetica: en un interfono, el
+ * recorte se lleva los LATERALES y conserva el centro, que es donde esta la
+ * persona que se planta delante del panel. Se pierde oficina, no interlocutor.
+ *
+ * Si algun dia se quiere el termino medio, es una linea: cambiar `flex: 1` por
+ * un `aspect-ratio` de la tabla. */
 .pantalla--llamada {
     display: flex; flex-direction: column;
     height: 100dvh; padding: 0; gap: 0;
-    justify-content: flex-start;
+    /* Ancla de #autovista, que va posicionado sobre el video. */
+    position: relative;
 }
-#jitsi { width: 100%; aspect-ratio: 16 / 9; background: #000; flex: none; }
-/* En el hueco libre bajo el video, centrada. Ya no hace falta anclarla al fondo
-   de la pantalla: ahora hay sitio propio. */
-.controles { flex: 1; display: flex; align-items: center; justify-content: center; gap: 1.5rem; }
+#jitsi { width: 100%; flex: 1; min-height: 0; background: #000; }
+
+/* La camara propia, flotando sobre el video en la esquina inferior derecha. Es
+   lo que Jitsi no deja colocar desde fuera del iframe, y por eso la pintamos
+   nosotros. `scaleX(-1)`: uno se ve como en un espejo, que es como espera verse;
+   la imagen que sale hacia la otra oficina NO se toca. */
+#autovista {
+    position: absolute;
+    right: 1.5rem;
+    bottom: calc(1.25rem + 120px + 1.5rem);
+    width: clamp(9rem, 22dvw, 18rem);
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: #000;
+    border-radius: 0.75rem;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.55);
+    transform: scaleX(-1);
+    z-index: 10;
+}
+/* Franja propia abajo: no flota sobre el video, asi que no tapa nada ni compite
+   con la interfaz de Jitsi. */
+.controles {
+    flex: none;
+    display: flex; align-items: center; justify-content: center;
+    gap: 1.5rem; padding: 1.25rem 0;
+}
 
 /* Aviso de broker caido DURANTE una llamada. Va sobre el video, arriba, para no
    competir con la botonera de abajo. Ambar y no rojo a proposito: la llamada

@@ -1,3 +1,5 @@
+import { AutoVista } from './runtime/autovista';
+import { horaEn, horasDeSedes } from './core/horas';
 import type { NombreTimer } from './core/tipos';
 import { ClienteMqtt } from './mqtt/cliente-mqtt';
 import { SesionJitsi, type ApiJitsi } from './jitsi/sesion-jitsi';
@@ -91,8 +93,10 @@ const fabricaJitsi = (sala: string, contenedor: HTMLElement, displayName: string
             disableTileView: true,
             // Sin esto Jitsi esconde el filmstrip -y con el la miniatura propia-
             // porque el panel es vertical y entra en su umbral de "pantalla estrecha".
-            disableFilmstripAutohiding: true,
-            disableSelfView: false,
+            // La miniatura propia la pinta AutoVista fuera del iframe, asi que
+            // aqui se pide que Jitsi NO la muestre: dos veces la misma cara en la
+            // misma pantalla, y una de ellas donde Jitsi decida.
+            disableSelfView: true,
             toolbarButtons: []
         },
         interfaceConfigOverwrite: { TOOLBAR_BUTTONS: [], SHOW_JITSI_WATERMARK: false }
@@ -108,17 +112,42 @@ const jitsi = new SesionJitsi(
     NOMBRE
 );
 
-const reloj = () => new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+const autovista = new AutoVista();
+
+const reloj = (ahora: Date) =>
+    ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
 function pintar(): void {
+    // Un solo instante para el reloj propio y para el de las sedes: pedir la hora
+    // dos veces puede caer a los dos lados de un cambio de minuto y hacer que una
+    // sede en la MISMA zona parezca tener una hora distinta.
+    const ahora = new Date();
+    // La hora de esta sede sale de su zona en `config/sedes`, no del reloj del
+    // sistema; el reloj local solo es el respaldo de cuando el directorio aun no
+    // ha llegado o no declara zona. Asi el totem muestra la hora que operaciones
+    // dice que tiene esa oficina, en vez de la que tenga configurada el Windows.
+    const propia = horaEn(totem.zonaPropia(), ahora) ?? reloj(ahora);
+    const sedes = totem.sedes();
     render(raiz, {
         contexto: totem.contexto,
-        sedes: totem.sedes(),
-        reloj: reloj(),
+        sedes,
+        propia: { sede: SEDE, nombre: NOMBRE },
+        horas: horasDeSedes(sedes, propia, ahora),
+        reloj: propia,
         microSilenciado: jitsi.silenciado,
         camaraApagada: jitsi.camaraOculta,
         brokerConectado: totem.conectado
     });
+
+    // Mismo ciclo de vida que el iframe: la camara propia se abre al entrar en
+    // llamada y se cierra al salir. Las dos operaciones son idempotentes, que es
+    // lo que permite llamarlas desde cada repintado -uno por segundo, por el
+    // reloj- sin pedir la camara una y otra vez.
+    if (totem.contexto.estado === 'en-llamada') {
+        void autovista.mostrar(raiz.querySelector<HTMLVideoElement>('#autovista'));
+    } else {
+        autovista.ocultar();
+    }
 }
 
 const totem = new Totem({
