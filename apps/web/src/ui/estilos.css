@@ -225,7 +225,19 @@ html, body {
 }
 /* El video ocupa la pantalla entera. La botonera y la miniatura ya no le quitan
    sitio: van encima, en las esquinas de arriba. */
-#jitsi { position: absolute; inset: 0; background: #000; }
+#jitsi { position: absolute; inset: 0; background: #000; overflow: hidden; }
+
+/* El iframe, en BLOQUE. Por defecto es un elemento en linea, asi que el navegador
+   le reserva el hueco del descendente de la linea y un iframe con height 100%
+   acaba midiendo unos pixeles MAS que su contenedor. Eso desbordaba por abajo y
+   producia un scroll minimo y sin causa aparente en la pantalla de llamada.
+   Reportado en el totem de Lorca el 2026-08-11. */
+#jitsi iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
 
 /* La camara propia, flotando sobre el video en la esquina inferior derecha. Es
    lo que Jitsi no deja colocar desde fuera del iframe, y por eso la pintamos
