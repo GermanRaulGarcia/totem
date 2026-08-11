@@ -30,6 +30,10 @@ html, body {
     user-select: none;
     touch-action: manipulation;
     overscroll-behavior: none;
+    /* Un kiosco NO se desplaza. No hay barra que arrastrar ni nada a lo que ir, y
+       si algo se sale es preferible recortarlo a que un roce al pasar deje la
+       pantalla movida y nadie sepa devolverla a su sitio. */
+    overflow: hidden;
     cursor: none;
 }
 
