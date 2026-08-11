@@ -50,16 +50,16 @@ html, body {
 .sedes { display: flex; gap: clamp(0.75rem, 2dvw, 2rem); flex-wrap: wrap; justify-content: center; }
 
 .sede {
-    min-width: clamp(9rem, 22dvw, 20rem);
-    min-height: 150px; /* Boton de pared, no de movil. */
-    display: flex; flex-direction: column; gap: 0.9rem;
+    min-width: clamp(11rem, 30dvw, 28rem);
+    min-height: 200px; /* Boton de pared, no de movil. */
+    display: flex; flex-direction: column; gap: 1.1rem;
     align-items: center; justify-content: center;
-    padding: 1rem 1.2rem;
+    padding: 1.5rem 1.75rem;
     background: var(--superficie); color: var(--texto);
     border: 2px solid transparent; border-radius: 1rem;
     /* Estaba escrito `clamp(2rem, 2dvw, 1.5rem)`: con el minimo POR ENCIMA del
        maximo, clamp descarta el maximo y devuelve siempre 2rem. Nunca escalo. */
-    font-size: clamp(1.1rem, 2.2dvw, 2rem);
+    font-size: clamp(1.3rem, 3dvw, 2.8rem);
     /* Solo transform y opacity: no tocan layout, van por compositor. */
     transition: transform 120ms ease, opacity 120ms ease;
 }
@@ -97,12 +97,17 @@ html, body {
     /* Sin margen propio: el `gap` y el `padding` de la tarjeta ya dan el aire.
        Sumar los tres era lo que hinchaba la tarjeta. */
     margin: 0;
-    min-height: 56px;
-    padding: 0.4rem 1.4rem;
-    display: flex; align-items: center; gap: 0.5rem;
+    /* 72 de alto y ancho generoso, por decision de producto tras verlo en el
+       panel. El diseño §6.1 pide 120 px de objetivo tactil -botones de pared a un
+       brazo, no de movil a 30 cm-, asi que aqui se va por debajo a sabiendas: lo
+       que compensa es que el ANCHO si es holgado, y el area de acierto total
+       tambien. Si alguna vez se reportan toques fallidos, este es el numero. */
+    min-height: 72px;
+    padding: 0.5rem 3.25rem;
+    display: flex; align-items: center; gap: 0.6rem;
     border: none; border-radius: 999px;
     background: var(--acento); color: var(--sobre-acento);
-    font-size: 0.5em; font-weight: 600;
+    font-size: 0.7em; font-weight: 600;
     transition: transform 120ms ease;
 }
 .sede__llamar:active { transform: scale(0.94); }
@@ -153,7 +158,7 @@ html, body {
 .marca {
     /* Estaba `clamp(5rem, 4dvh, 3rem)`, con el minimo por encima del maximo: eso
        devuelve siempre 5rem y no escala nunca. Mismo fallo que tenia `.sede`. */
-    height: clamp(2.5rem, 7dvh, 5rem);
+    height: clamp(3.5rem, 10dvh, 8rem);
     width: auto;
     opacity: 0.55;
     filter: brightness(0) invert(1);
@@ -168,7 +173,7 @@ html, body {
 .identidad__sede {
     margin: 0;
     display: flex; align-items: center; gap: 0.5em;
-    font-size: clamp(1rem, 2.4dvw, 1.9rem);
+    font-size: clamp(1.5rem, 3.6dvw, 3rem);
     letter-spacing: 0.02em;
 }
 .identidad__sede .sede__distintivo { width: 1.3em; height: 1.3em; }
