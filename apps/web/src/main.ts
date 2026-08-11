@@ -75,6 +75,11 @@ const fabricaJitsi = (sala: string, contenedor: HTMLElement, displayName: string
     return new Api(HOST_JITSI, {
         roomName: sala,
         parentNode: contenedor,
+        // Explicitos: el contenedor es una caja 16:9, no la pantalla entera, y el
+        // iframe tiene que llenarla exactamente. Sin esto se depende del valor por
+        // defecto de la version de Jitsi que este servida ese dia.
+        width: '100%',
+        height: '100%',
         userInfo: { displayName },
         configOverwrite: {
             startWithAudioMuted: false,
@@ -109,7 +114,6 @@ function pintar(): void {
     render(raiz, {
         contexto: totem.contexto,
         sedes: totem.sedes(),
-        seleccion: totem.seleccion,
         reloj: reloj(),
         microSilenciado: jitsi.silenciado,
         camaraApagada: jitsi.camaraOculta,
@@ -124,21 +128,19 @@ const totem = new Totem({
 });
 
 raiz.addEventListener('click', ev => {
-    const toque = enrutarToque(ev.target, totem.contexto.estado);
+    const toque = enrutarToque(ev.target);
     if (toque === null) return;
-    if (toque.tipo === 'sede') { totem.alternarSeleccion(toque.sede); return; }
+    if (toque.tipo === 'llamar') {
+        // El boton solo se pinta para las sedes llamables, pero eso describe el
+        // ultimo repintado, no el instante del toque: entre uno y otro cabe un
+        // mensaje MQTT. Se revalida contra la presencia vigente ahora mismo.
+        if (totem.esLlamableAhora(toque.sede)) {
+            totem.emitir({ tipo: 'seleccion-confirmada', destino: toque.sede });
+        }
+        return;
+    }
 
     switch (toque.accion) {
-        case 'despertar': totem.emitir({ tipo: 'toque-pantalla' }); break;
-        case 'llamar': {
-            // El boton se deshabilita solo si el destino elegido sigue siendo
-            // llamable, pero eso es una propiedad del marcado, no una garantia.
-            // Aqui se revalida contra la presencia vigente en el instante del
-            // toque: entre el ultimo repintado y el dedo cabe un mensaje MQTT.
-            const destino = totem.destinoElegible();
-            if (destino !== null) totem.emitir({ tipo: 'seleccion-confirmada', destino });
-            break;
-        }
         case 'cancelar': totem.emitir({ tipo: 'cancelar' }); break;
         case 'aceptar': totem.emitir({ tipo: 'aceptar' }); break;
         case 'rechazar': totem.emitir({ tipo: 'rechazar' }); break;

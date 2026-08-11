@@ -1,9 +1,18 @@
+/* Paleta de Victoria Crea, tomada de victoriacrea.com: negro #171717, lima
+   #daf230 y blanco. El lima es MUY luminoso, asi que todo lo que se pinte encima
+   lleva texto negro; usarlo como color de texto sobre fondo oscuro tambien
+   funciona, pero como acento puntual, no para parrafos. */
 :root {
-    --fondo: #0b0e14;
-    --superficie: #151a23;
-    --texto: #e8eaed;
-    --tenue: #8a92a6;
-    --acento: #2f7cf6;
+    --fondo: #171717;
+    --superficie: #242424;
+    --texto: #ffffff;
+    --tenue: #9a9a9a;
+    --acento: #daf230;
+    --acento-apagado: #a8bd15;
+    /* Sobre lima o sobre verde, el texto va en negro de marca. */
+    --sobre-acento: #171717;
+    /* Estados de sede: semaforo, no marca. Verde y lima juntos se confunden, asi
+       que el verde de "Disponible" se mantiene claramente distinto del acento. */
     --verde: #24a35a;
     --ambar: #d99413;
     --rojo: #d0392b;
@@ -34,38 +43,70 @@ html, body {
     padding: clamp(1rem, 4dvw, 4rem);
 }
 
-.reloj { font-size: clamp(4rem, 18dvw, 12rem); font-weight: 200; margin: 0; }
+.reloj { font-size: clamp(4rem, 10dvw, 12rem); font-weight: 200; margin: 0; }
 .titulo { font-size: clamp(1.5rem, 5dvw, 3.5rem); margin: 0; font-weight: 500; }
 .mensaje { font-size: clamp(1rem, 3dvw, 2rem); color: var(--tenue); margin: 0; }
-.invitacion { font-size: clamp(1rem, 2.5dvw, 1.75rem); color: var(--tenue); margin: 0; }
 
 .sedes { display: flex; gap: clamp(0.75rem, 2dvw, 2rem); flex-wrap: wrap; justify-content: center; }
 
 .sede {
     min-width: clamp(9rem, 22dvw, 20rem);
-    min-height: 120px; /* Boton de pared, no de movil. */
-    display: flex; flex-direction: column; gap: 0.5rem;
+    min-height: 150px; /* Boton de pared, no de movil. */
+    display: flex; flex-direction: column; gap: 0.9rem;
     align-items: center; justify-content: center;
+    padding: 1rem 1.2rem;
     background: var(--superficie); color: var(--texto);
     border: 2px solid transparent; border-radius: 1rem;
-    font-size: clamp(1rem, 2dvw, 1.5rem);
+    /* Estaba escrito `clamp(2rem, 2dvw, 1.5rem)`: con el minimo POR ENCIMA del
+       maximo, clamp descarta el maximo y devuelve siempre 2rem. Nunca escalo. */
+    font-size: clamp(1.1rem, 2.2dvw, 2rem);
     /* Solo transform y opacity: no tocan layout, van por compositor. */
     transition: transform 120ms ease, opacity 120ms ease;
 }
 
-.sede:active:not([disabled]):not(.sede--inerte) { transform: scale(0.96); }
+/* Logotipo al lado del nombre. Ver `distintivo()` para el apilado de fondos. */
+.sede__cabecera { display: flex; align-items: center; justify-content: center; gap: 0.55em; }
+.sede__distintivo {
+    width: 1.5em; height: 1.5em;
+    flex: none;
+    object-fit: contain;
+}
 
-/* Tarjeta puramente informativa (reposo y llamando): el toque la atraviesa y
-   llega al contenedor, que es quien despierta la pantalla. Ver `tarjetas()`. */
-.sede--inerte { pointer-events: none; }
-.sede[data-elegida="si"] { border-color: var(--acento); }
-.sede--libre .sede__estado { color: var(--verde); }
-.sede--ocupada .sede__estado { color: var(--ambar); }
+/* El estado NO se escribe: lo dice el borde. En un panel que se mira de lejos, un
+   color de borde se lee de un vistazo y un parrafo no. Y la accion tampoco hace
+   falta explicarla: solo las sedes llamables tienen boton.
+   El texto sigue existiendo en el `aria-label` de la tarjeta, que es donde
+   importa para quien no ve el color. */
+.sede--libre { border-color: var(--verde); }
+.sede--ocupada { border-color: var(--ambar); }
 .sede--offline { opacity: 0.4; }
-/* En el selector, una sede offline U OCUPADA se pinta apagada y no es pulsable:
-   con llamadas 1 a 1 nadie se incorpora a una conversacion en curso. */
-.sede[disabled] { opacity: 0.4; }
-.sede__estado { font-size: 0.75em; color: var(--tenue); }
+
+/* El UNICO elemento pulsable de la tarjeta. La tarjeta en si es un div inerte:
+   el panel esta en una pared por la que pasa gente, y si toda la tarjeta lanzara
+   la llamada, un roce al pasar haria sonar otra oficina. Solo se pinta para las
+   sedes llamables, asi que su mera presencia ya dice que se puede llamar. */
+.sede__llamar {
+    /* Sin margen propio: el `gap` y el `padding` de la tarjeta ya dan el aire.
+       Sumar los tres era lo que hinchaba la tarjeta. */
+    margin: 0;
+    min-height: 56px;
+    padding: 0.4rem 1.4rem;
+    display: flex; align-items: center; gap: 0.5rem;
+    border: none; border-radius: 999px;
+    background: var(--acento); color: var(--sobre-acento);
+    font-size: 0.5em; font-weight: 600;
+    transition: transform 120ms ease;
+}
+.sede__llamar:active { transform: scale(0.94); }
+.sede__llamar .icono { width: 1.4em; height: 1.4em; }
+
+/* Misma forma y mismo hueco, pero no invita a nada: sin el lima de marca, que
+   aqui significa "se puede pulsar". */
+.sede__llamar--inerte {
+    background: transparent;
+    color: var(--tenue);
+    border: 2px solid rgba(255, 255, 255, 0.14);
+}
 
 .acciones { display: flex; gap: 1rem; }
 
@@ -74,16 +115,39 @@ html, body {
     border: none; border-radius: 1rem;
     background: var(--superficie); color: var(--texto);
     font-size: clamp(1.1rem, 2.5dvw, 2rem);
+    /* Icono encima del texto: a un brazo de distancia la forma se reconoce antes
+       que la palabra, y asi el objetivo tactil sigue siendo el boton entero. */
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem;
     transition: transform 120ms ease;
 }
 
 .boton:active:not([disabled]) { transform: scale(0.96); }
 .boton[disabled] { opacity: 0.3; }
-.boton--principal { background: var(--acento); }
-.boton--aceptar { background: var(--verde); }
+.boton--principal { background: var(--acento); color: var(--sobre-acento); }
+.boton--aceptar { background: var(--verde); color: var(--sobre-acento); }
 .boton--colgar { background: var(--rojo); }
 
+/* Los iconos heredan `currentColor`, asi que no hay variantes por color de
+   boton. El tamano va en `em` para que crezca con el texto del propio boton. */
+.icono { width: 1.6em; height: 1.6em; display: block; }
+/* Colgar y rechazar son el mismo auricular girado: un solo dibujo, dos lecturas. */
+.icono--colgar { transform: rotate(135deg); }
+
 .pantalla--reposo { position: relative; }
+
+/* El logotipo de origen es oscuro (venia de una web de fondo claro), asi que se
+   invierte a blanco. `brightness(0)` lo aplana a negro puro y `invert(1)` lo pasa
+   a blanco: funciona sea cual sea el color original, que es lo que se quiere de un
+   fichero de marca que puede cambiar sin avisarnos. Discreto a proposito: en
+   reposo manda el reloj, no la marca. */
+.marca {
+    height: clamp(5rem, 4dvh, 3rem);
+    width: auto;
+    opacity: 0.55;
+    filter: brightness(0) invert(1);
+}
 
 /* Prevencion de burn-in en un panel encendido de forma permanente. */
 @keyframes deriva {
@@ -100,8 +164,22 @@ html, body {
     animation: latido 1.2s ease-in-out infinite;
 }
 
-#jitsi { position: fixed; inset: 0; }
-.controles { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); display: flex; gap: 1rem; z-index: 10; }
+/* Caja 16:9 arriba, no la pantalla entera.
+ *
+ * El panel es VERTICAL (9:16) y las camaras son APAISADAS (16:9). Para llenar el
+ * panel con esa imagen, Jitsi la recorta por los lados en un factor de 3,16: se
+ * veia un tercio de la otra oficina, una franja estrecha. Dandole una caja con la
+ * proporcion de la camara, la otra sede se ve ENTERA, y el hueco de abajo queda
+ * para la botonera en vez de para recorte. */
+.pantalla--llamada {
+    display: flex; flex-direction: column;
+    height: 100dvh; padding: 0; gap: 0;
+    justify-content: flex-start;
+}
+#jitsi { width: 100%; aspect-ratio: 16 / 9; background: #000; flex: none; }
+/* En el hueco libre bajo el video, centrada. Ya no hace falta anclarla al fondo
+   de la pantalla: ahora hay sitio propio. */
+.controles { flex: 1; display: flex; align-items: center; justify-content: center; gap: 1.5rem; }
 
 /* Aviso de broker caido DURANTE una llamada. Va sobre el video, arriba, para no
    competir con la botonera de abajo. Ambar y no rojo a proposito: la llamada
@@ -120,6 +198,16 @@ html, body {
     font-size: clamp(0.9rem, 2dvw, 1.4rem);
 }
 .aviso-sin-broker[hidden] { display: none; }
-.control { min-height: 120px; min-width: 120px; border: none; border-radius: 50%; background: var(--superficie); color: var(--texto); font-size: 1rem; }
+/* El icono es TODO el contenido de estos botones, asi que se centra de verdad y
+   se dimensiona aparte en vez de heredar el font-size: heredandolo quedaba un
+   dibujo de 25 px dentro de un boton de 120, ilegible a dos metros de la pared. */
+.control {
+    min-height: 120px; min-width: 120px;
+    border: none; border-radius: 50%;
+    background: var(--superficie); color: var(--texto);
+    display: grid; place-items: center;
+    padding: 0;
+}
+.control .icono { width: 3.5rem; height: 3.5rem; }
 .control--colgar { background: var(--rojo); }
 .control--inactivo { background: var(--ambar); color: #14202f; }

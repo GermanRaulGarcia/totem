@@ -1,4 +1,5 @@
-import { esLlamable, type Contexto, type Estado, type EstadoSede } from '../core/tipos';
+import { esLlamable, type Contexto, type EstadoSede } from '../core/tipos';
+import { ICONOS } from './iconos';
 
 /**
  * Que significa un toque sobre el DOM que pinta este modulo.
@@ -11,22 +12,28 @@ import { esLlamable, type Contexto, type Estado, type EstadoSede } from '../core
  */
 export type Toque =
     | { tipo: 'accion'; accion: string }
-    | { tipo: 'sede'; sede: string };
+    | { tipo: 'llamar'; sede: string };
 
 /** Selector unico de delegacion de eventos. */
 const SELECTOR_TOQUE = '[data-accion], [data-sede]';
 
-export function enrutarToque(objetivo: EventTarget | null, estado: Estado): Toque | null {
+/**
+ * Ya no depende del estado. Antes hacia falta porque `data-sede` significaba una
+ * cosa en el selector y otra en reposo; retirada la pantalla de seleccion, un
+ * nodo con `data-sede` solo puede ser el boton Llamar de esa sede.
+ *
+ * Y `data-sede` lo lleva EL BOTON, no la tarjeta: el panel esta en una pared por
+ * la que pasa gente, asi que el objetivo que lanza una llamada tiene que ser
+ * deliberado. Un roce sobre la tarjeta no llama.
+ */
+export function enrutarToque(objetivo: EventTarget | null): Toque | null {
     const nodo = objetivo instanceof Element
         ? objetivo.closest<HTMLElement>(SELECTOR_TOQUE)
         : null;
     if (nodo === null) return null;
 
-    // `data-sede` solo significa "elegir sede" mientras el selector esta abierto.
-    // En reposo la misma tarjeta lleva tambien `data-accion="despertar"` y es esa
-    // la lectura correcta.
     const sede = nodo.dataset.sede;
-    if (sede !== undefined && estado === 'seleccionando') return { tipo: 'sede', sede };
+    if (sede !== undefined) return { tipo: 'llamar', sede };
 
     const accion = nodo.dataset.accion;
     return accion === undefined ? null : { tipo: 'accion', accion };
@@ -35,8 +42,6 @@ export function enrutarToque(objetivo: EventTarget | null, estado: Estado): Toqu
 export interface Vista {
     contexto: Contexto;
     sedes: EstadoSede[];
-    /** A lo sumo una sede elegida: las llamadas son 1 a 1. */
-    seleccion: string | null;
     reloj: string;
     microSilenciado: boolean;
     camaraApagada: boolean;
@@ -82,52 +87,130 @@ function nombreDe(v: Vista, id: string): string {
     return v.sedes.find(s => s.sede === id)?.nombre ?? id;
 }
 
-/**
- * ¿Se puede pulsar Llamar? No basta con que haya una sede elegida: la presencia
- * llega por MQTT en cualquier momento, tambien con el selector abierto y el
- * usuario dudando delante del panel. Sin revalidar aqui, la tarjeta de la sede
- * elegida se pintaba gris y deshabilitada mientras el boton Llamar seguia
- * habilitado apuntandole, y la llamada salia hacia un totem que ya no podia
- * contestarla: 45 s de "Sonando..." para nadie. El selector tiene 30 s de
- * margen, asi que la ventana no es teorica.
- */
-function destinoPulsable(v: Vista): boolean {
-    if (v.seleccion === null) return false;
-    const elegida = v.sedes.find(s => s.sede === v.seleccion);
-    return elegida !== undefined && esLlamable(elegida);
+function textoEstado(s: EstadoSede): string {
+    if (!s.online) return 'Sin conexion';
+    return s.disponibilidad === 'ocupado' ? 'En llamada' : 'Disponible';
 }
 
-function tarjetas(v: Vista, seleccionable: boolean): string {
-    return v.sedes.map(s => {
-        // En modo no seleccionable NO se usa `disabled`: un boton deshabilitado no
-        // dispara click y ademas se traga el que iba dirigido a su contenedor, asi
-        // que en reposo las tarjetas de sede (el objetivo mas grande y evidente de
-        // la pantalla) anulaban el "Toca para llamar" justo al pulsarlas.
-        //
-        // La tarjeta inerte lleva ademas `data-accion="despertar"`, el mismo de la
-        // seccion. El `pointer-events: none` de `.sede--inerte` ya hacia que el
-        // toque atravesara, pero eso dejaba la correccion entera en manos de la
-        // hoja de estilos: si el CSS no cargara, el objetivo mas grande de la
-        // pantalla volveria a tragarse el toque. Con el atributo, el enrutado
-        // funciona por estructura del DOM y el CSS solo es defensa en profundidad.
-        const inerte = !seleccionable;
-        // Una sede OCUPADA no es pulsable, igual que una offline. Con llamadas 1 a
-        // 1 esta es la proteccion principal contra un tercero: nadie se incorpora
-        // a una llamada en curso, asi que llamar a quien ya esta hablando solo
-        // produciria 45 s de timbre que nadie va a contestar.
-        const bloqueado = seleccionable && !esLlamable(s);
+/**
+ * El id de sede, restringido a lo que puede ir dentro de `url(...)` sin escapar.
+ *
+ * Los ids llegan por red (`config/sedes`), asi que interpolarlos en un atributo
+ * `style` seria una via de inyeccion CSS. `encodeURIComponent` NO sirve aqui: deja
+ * pasar comillas simples y parentesis, que es justo lo que cierra un `url('...')`.
+ * Con una lista blanca, lo que se interpola no puede romper nada por construccion.
+ */
+const ID_PARA_URL = /^[a-z0-9_-]{1,40}$/i;
+
+export const LOGO_GENERICO = '/marca/sedes/generica.svg';
+
+/**
+ * Logotipo de la sede.
+ *
+ * El respaldo NO se puede hacer con dos fondos CSS apilados: `background-image`
+ * con dos URLs pinta LAS DOS, una sobre otra, y como estos iconos son de linea
+ * con fondo transparente el generico se veia a traves del propio. Se intento y se
+ * veian superpuestos en todas las sedes.
+ *
+ * Con `<img>` el respaldo es de verdad: si el fichero no existe, el navegador
+ * dispara `error` y `cablearRespaldoDeLogos` cambia el `src` al generico. El
+ * manejador se engancha desde JS y no como atributo `onerror`, que en una
+ * plantilla de innerHTML seria una via de inyeccion.
+ *
+ * Es lo que sostiene la promesa del §9.2: publicas `config/sedes` y la sede nueva
+ * aparece el mismo dia con un icono digno, sin esperar a que nadie dibuje nada.
+ */
+function distintivo(s: EstadoSede): string {
+    if (!ID_PARA_URL.test(s.sede)) {
+        return `<img class="sede__distintivo" src="${LOGO_GENERICO}" alt="">`;
+    }
+    // SVG primero por calidad -escala sin pixelarse en un panel 4K- pero se
+    // admite PNG detras: obligar a vectorizar un logotipo que solo existe en
+    // mapa de bits seria pedirle a operaciones una herramienta de diseno para
+    // cambiar un icono.
+    const [primero, ...respaldo] = [
+        `/marca/sedes/${s.sede}.svg`,
+        `/marca/sedes/${s.sede}.png`,
+        LOGO_GENERICO
+    ];
+    return `<img class="sede__distintivo" src="${primero}"
+                 data-respaldo="${respaldo.join(' ')}" alt="">`;
+}
+
+/**
+ * Va probando los respaldos de cada logotipo conforme fallan.
+ *
+ * El manejador se engancha desde JS y no como atributo `onerror`: dentro de una
+ * plantilla de innerHTML, eso seria una via de inyeccion. Y al agotar la lista se
+ * desengancha, porque si el generico tampoco cargara, reasignar `src` con un
+ * `error` pendiente es un bucle infinito en un kiosco desatendido.
+ */
+function cablearRespaldoDeLogos(raiz: HTMLElement): void {
+    for (const img of raiz.querySelectorAll<HTMLImageElement>('img.sede__distintivo')) {
+        const pendientes = (img.dataset.respaldo ?? '').split(' ').filter(u => u !== '');
+        const alFallar = (): void => {
+            const siguiente = pendientes.shift();
+            if (siguiente === undefined) {
+                img.removeEventListener('error', alFallar);
+                return;
+            }
+            img.src = siguiente;
+        };
+        img.addEventListener('error', alFallar);
+    }
+}
+
+/**
+ * El boton de la tarjeta. Existe SIEMPRE, para que todas las tarjetas midan y se
+ * lean igual; lo que cambia es si llama o solo informa.
+ *
+ * Cuando no se puede llamar, el boton dice POR QUE -"En llamada", "Sin conexion"-
+ * y va `disabled`. Eso recupera la distincion que se pierde con el borde de color:
+ * una sede ocupada vuelve en dos minutos y una caida esta muerta, y de un vistazo
+ * ambas eran solo "una tarjeta sin verde".
+ *
+ * El `data-sede` SOLO lo lleva la variante que llama. Un boton `disabled` ya no
+ * dispara click, pero no depender de eso es gratis: sin el atributo, el enrutado
+ * no tiene por donde mandar una llamada a una sede que no puede contestarla.
+ */
+function boton(s: EstadoSede): string {
+    if (esLlamable(s)) {
         return `
-        <button class="${claseSede(s)}${inerte ? ' sede--inerte' : ''}" data-sede="${escapar(s.sede)}"
-                ${inerte ? 'data-accion="despertar"' : ''}
-                ${bloqueado ? 'disabled' : ''}
-                ${inerte || bloqueado ? 'aria-disabled="true"' : ''}
-                ${v.seleccion === s.sede && !bloqueado ? 'data-elegida="si"' : ''}>
-            <span class="sede__nombre">${escapar(s.nombre)}</span>
-            <span class="sede__estado">${s.online
-                ? (s.disponibilidad === 'ocupado' ? 'En llamada' : 'Disponible')
-                : 'Sin conexion'}</span>
-        </button>`;
-    }).join('');
+            <button class="sede__llamar" data-sede="${escapar(s.sede)}"
+                    aria-label="Llamar a ${escapar(s.nombre)}">
+                ${ICONOS.llamar}<span>Llamar</span>
+            </button>`;
+    }
+    const icono = s.online ? ICONOS.llamar : ICONOS.desconectado;
+    return `
+            <button class="sede__llamar sede__llamar--inerte" disabled>
+                ${icono}<span>${textoEstado(s)}</span>
+            </button>`;
+}
+
+/**
+ * Tarjeta de sede en reposo: logotipo, nombre y el boton.
+ *
+ * La tarjeta es un `div` inerte y el unico elemento pulsable es el boton Llamar.
+ * Es deliberado: el panel esta colgado en una pared por la que pasa gente, y si
+ * la tarjeta entera lanzara la llamada, un roce al pasar haria sonar otra
+ * oficina. El gesto que llama tiene que ser un gesto dirigido.
+ *
+ * Una sede OCUPADA no muestra boton, igual que una offline. Con llamadas 1 a 1
+ * esa es la proteccion principal contra un tercero: nadie se incorpora a una
+ * conversacion en curso, asi que llamar a quien ya esta hablando solo produciria
+ * 45 s de timbre que nadie va a contestar.
+ */
+function tarjetas(v: Vista): string {
+    return v.sedes.map(s => `
+        <div class="${claseSede(s)}" role="group"
+             aria-label="${escapar(s.nombre)}: ${textoEstado(s)}">
+            <div class="sede__cabecera">
+                ${distintivo(s)}
+                <span class="sede__nombre">${escapar(s.nombre)}</span>
+            </div>
+            ${boton(s)}
+        </div>`).join('');
 }
 
 /**
@@ -142,7 +225,7 @@ function destino(v: Vista): string {
     const id = v.contexto.destino;
     if (id === null) return '';
     return `
-        <div class="sede sede--inerte destino" data-destino="${escapar(id)}">
+        <div class="sede destino" data-destino="${escapar(id)}">
             <span class="sede__nombre">${escapar(nombreDe(v, id))}</span>
             <span class="sede__estado destino__estado">Sonando...</span>
         </div>`;
@@ -162,22 +245,25 @@ export function render(raiz: HTMLElement, v: Vista): void {
                     <div id="jitsi"></div>
                     <p class="aviso-sin-broker" hidden>Sin conexion con el servidor</p>
                     <nav class="controles">
-                        <button data-accion="micro" class="control">Micro</button>
-                        <button data-accion="camara" class="control">Camara</button>
-                        <button data-accion="colgar" class="control control--colgar">Colgar</button>
+                        <button data-accion="micro" class="control" aria-label="Microfono"></button>
+                        <button data-accion="camara" class="control" aria-label="Camara"></button>
+                        <button data-accion="colgar" class="control control--colgar"
+                                aria-label="Colgar">${ICONOS.colgar}</button>
                     </nav>
                 </section>`;
         }
         // Los controles reflejan el estado REAL que reporta Jitsi, no una suposicion.
         const micro = raiz.querySelector<HTMLElement>('[data-accion="micro"]');
         if (micro !== null) {
-            micro.textContent = v.microSilenciado ? 'Micro off' : 'Micro';
+            micro.innerHTML = v.microSilenciado ? ICONOS.microApagado : ICONOS.micro;
+            micro.setAttribute('aria-label', v.microSilenciado ? 'Activar microfono' : 'Silenciar microfono');
             micro.setAttribute('aria-pressed', String(v.microSilenciado));
             micro.classList.toggle('control--inactivo', v.microSilenciado);
         }
         const camara = raiz.querySelector<HTMLElement>('[data-accion="camara"]');
         if (camara !== null) {
-            camara.textContent = v.camaraApagada ? 'Camara off' : 'Camara';
+            camara.innerHTML = v.camaraApagada ? ICONOS.camaraApagada : ICONOS.camara;
+            camara.setAttribute('aria-label', v.camaraApagada ? 'Encender camara' : 'Apagar camara');
             camara.setAttribute('aria-pressed', String(v.camaraApagada));
             camara.classList.toggle('control--inactivo', v.camaraApagada);
         }
@@ -220,33 +306,23 @@ export function render(raiz: HTMLElement, v: Vista): void {
             }
             firmaReposo = firma;
             raiz.innerHTML = `
-                <section class="pantalla pantalla--reposo" data-accion="despertar">
+                <section class="pantalla pantalla--reposo">
+                    <img class="marca" src="/marca/victoria-crea.png" alt="Victoria Crea">
                     <p class="reloj">${escapar(v.reloj)}</p>
-                    <div class="sedes">${tarjetas(v, false)}</div>
-                    <p class="invitacion">Toca para llamar</p>
+                    <div class="sedes">${tarjetas(v)}</div>
                 </section>`;
+            cablearRespaldoDeLogos(raiz);
             return;
         }
-
-        case 'seleccionando':
-            raiz.innerHTML = `
-                <section class="pantalla pantalla--seleccion">
-                    <h1 class="titulo">A que sede llamas</h1>
-                    <div class="sedes sedes--grandes">${tarjetas(v, true)}</div>
-                    <nav class="acciones">
-                        <button data-accion="cancelar" class="boton">Cancelar</button>
-                        <button data-accion="llamar" class="boton boton--principal"
-                                ${destinoPulsable(v) ? '' : 'disabled'}>Llamar</button>
-                    </nav>
-                </section>`;
-            return;
 
         case 'llamando':
             raiz.innerHTML = `
                 <section class="pantalla pantalla--llamando">
                     <h1 class="titulo">Llamando...</h1>
                     <div class="sedes">${destino(v)}</div>
-                    <button data-accion="cancelar" class="boton boton--colgar">Cancelar</button>
+                    <button data-accion="cancelar" class="boton boton--colgar">
+                        ${ICONOS.colgar}<span>Cancelar</span>
+                    </button>
                 </section>`;
             return;
 
@@ -261,8 +337,12 @@ export function render(raiz: HTMLElement, v: Vista): void {
                     )}</h1>
                     <p class="mensaje">te esta llamando</p>
                     <nav class="acciones">
-                        <button data-accion="rechazar" class="boton boton--colgar">Rechazar</button>
-                        <button data-accion="aceptar" class="boton boton--aceptar">Aceptar</button>
+                        <button data-accion="rechazar" class="boton boton--colgar">
+                            ${ICONOS.rechazar}<span>Rechazar</span>
+                        </button>
+                        <button data-accion="aceptar" class="boton boton--aceptar">
+                            ${ICONOS.aceptar}<span>Aceptar</span>
+                        </button>
                     </nav>
                 </section>`;
             return;
