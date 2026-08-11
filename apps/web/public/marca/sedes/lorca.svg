@@ -1,14 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-  <!-- Lorca: la torre del castillo, calcada de un boceto de la empresa.
+  <!-- Lorca: la torre del castillo.
        Rasgos que la definen y que NO hay que "corregir" al retocarla:
-         - el remate sube en escalones hacia el centro y acaba en PICO,
-           no es una almena plana;
-         - la torre es ASIMETRICA: el lado izquierdo se abre en una curva
-           larga y el derecho baja casi recto. Ahi esta el caracter;
+         - remate LISO subiendo a un pico central. Llevo almenas en una version
+           anterior y se retiraron el 2026-08-11: la torre real no las tiene;
+         - la torre es ASIMETRICA: el lado izquierdo se abre en una curva larga
+           y el derecho baja casi recto. Ahi esta el caracter;
          - la base va ABIERTA, sin linea de suelo;
-         - una sola ventana, cuadrada y descentrada hacia arriba y a la
-           izquierda, no en el eje.
-       Trazo continuo: sube por la cola izquierda, recorre la corona y baja. -->
-  <path d="M2.2 22.2C4.4 21.7 6.3 19.6 6.3 15.8V5.6H7.9V6.5H9V4.4H10.3V5.3H11.1L12 3l.9 2.3H13.7V4.4H15V6.5H16.1V5.6H17.7C17.9 11 18 17 18.3 22.2"/>
+         - una sola ventana, cuadrada y descentrada hacia arriba y a la izquierda.
+       Trazo continuo: sube por la cola izquierda, cruza el remate y baja. -->
+  <path d="M2.2 22.2C4.4 21.7 6.3 19.6 6.3 15.8V5.6L12 3l5.7 2.6C17.9 11 18 17 18.3 22.2"/>
   <rect x="8.2" y="9.3" width="2.2" height="2.2"/>
 </svg>

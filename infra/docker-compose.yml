@@ -1,27 +1,22 @@
+# Solo Mosquitto. Caddy se retiro el 2026-08-11: en el VPS real, el 80 y el 443
+# los tiene Apache con varias webs en produccion, asi que Apache hace de puerta.
+# Ver infra/apache/interfono.kordino.com.conf.
+
 services:
   mosquitto:
     image: eclipse-mosquitto:2
     restart: unless-stopped
+    # Publicado SOLO en el localhost del VPS. El broker no es accesible desde
+    # internet: solo se llega a el atravesando Apache por TLS, que es quien
+    # expone /mqtt. Quitar el `127.0.0.1:` de delante lo abriria al mundo con
+    # una credencial por sede como unica defensa.
+    ports:
+      - "127.0.0.1:9001:9001"
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/acl:/mosquitto/config/acl:ro
       - ./mosquitto/passwd:/mosquitto/config/passwd:ro
       - mosquitto-data:/mosquitto/data
 
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../apps/web/dist:/srv/web:ro
-      - ./vendor:/srv/vendor:ro
-      - caddy-data:/data
-    depends_on:
-      - mosquitto
-
 volumes:
   mosquitto-data:
-  caddy-data:
