@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Respaldo para una sede que todavia no tiene logotipo propio: un edificio.
+       Se apila DEBAJO del logotipo de la sede como segundo fondo CSS, asi que
+       solo se ve cuando el primero no existe. -->
+  <path d="M4 21V6.5l7-3.5 7 3.5V21"/>
+  <path d="M2.5 21h19"/>
+  <path d="M7.5 9.5h1.6M12.9 9.5h1.6M7.5 13.5h1.6M12.9 13.5h1.6"/>
+  <path d="M9.4 21v-3.6h3.2V21"/>
+</svg>
