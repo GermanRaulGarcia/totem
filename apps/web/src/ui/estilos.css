@@ -215,12 +215,13 @@ html, body {
  * Si algun dia se quiere el termino medio, es una linea: cambiar `flex: 1` por
  * un `aspect-ratio` de la tabla. */
 .pantalla--llamada {
-    display: flex; flex-direction: column;
-    height: 100dvh; padding: 0; gap: 0;
-    /* Ancla de #autovista, que va posicionado sobre el video. */
+    height: 100dvh; padding: 0;
+    /* Ancla de los dos elementos que flotan sobre el video. */
     position: relative;
 }
-#jitsi { width: 100%; flex: 1; min-height: 0; background: #000; }
+/* El video ocupa la pantalla entera. La botonera y la miniatura ya no le quitan
+   sitio: van encima, en las esquinas de arriba. */
+#jitsi { position: absolute; inset: 0; background: #000; }
 
 /* La camara propia, flotando sobre el video en la esquina inferior derecha. Es
    lo que Jitsi no deja colocar desde fuera del iframe, y por eso la pintamos
@@ -228,8 +229,8 @@ html, body {
    la imagen que sale hacia la otra oficina NO se toca. */
 #autovista {
     position: absolute;
-    right: 1.5rem;
-    bottom: calc(1.25rem + 120px + 1.5rem);
+    top: 1.5rem;
+    left: 1.5rem;
     /* Vertical, no con la forma de la camara. La camara captura 16:9, asi que
        `cover` recorta los lados y deja el centro del encuadre. Se pierde ancho de
        la propia oficina, pero esta miniatura solo sirve para comprobar que uno
@@ -244,12 +245,17 @@ html, body {
     transform: scaleX(-1);
     z-index: 10;
 }
-/* Franja propia abajo: no flota sobre el video, asi que no tapa nada ni compite
-   con la interfaz de Jitsi. */
+/* En COLUMNA, arriba a la derecha, flotando sobre el video. Antes eran una franja
+   horizontal abajo; se movieron el 2026-08-11 siguiendo el boceto de la empresa.
+   En un panel vertical la esquina de arriba queda a la altura de la vista, y una
+   columna aprovecha el alto sobrante en lugar de robarle sitio al video. */
 .controles {
-    flex: none;
-    display: flex; align-items: center; justify-content: center;
-    gap: 1.5rem; padding: 1.25rem 0;
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 1rem;
+    z-index: 10;
 }
 
 /* Aviso de broker caido DURANTE una llamada. Va sobre el video, arriba, para no
@@ -257,7 +263,10 @@ html, body {
    sigue bien, lo que se ha perdido es la presencia. */
 .aviso-sin-broker {
     position: fixed;
-    top: 2rem;
+    /* Abajo desde el 2026-08-11: arriba estan la miniatura y la botonera, y en un
+       panel estrecho la pildora se les echaba encima. Abajo quedo libre al pasar
+       los botones a una columna lateral. */
+    bottom: 2rem;
     left: 50%;
     transform: translateX(-50%);
     z-index: 10;
