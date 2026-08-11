@@ -230,8 +230,13 @@ html, body {
     position: absolute;
     right: 1.5rem;
     bottom: calc(1.25rem + 120px + 1.5rem);
-    width: clamp(9rem, 22dvw, 18rem);
-    aspect-ratio: 16 / 9;
+    /* Vertical, no con la forma de la camara. La camara captura 16:9, asi que
+       `cover` recorta los lados y deja el centro del encuadre. Se pierde ancho de
+       la propia oficina, pero esta miniatura solo sirve para comprobar que uno
+       sale bien en cuadro, y uno esta en el centro. Ademas asi acompaña la
+       orientacion del panel en vez de contradecirla. */
+    width: clamp(6rem, 13dvw, 10rem);
+    aspect-ratio: 9 / 16;
     object-fit: cover;
     background: #000;
     border-radius: 0.75rem;
