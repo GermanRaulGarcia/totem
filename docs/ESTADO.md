@@ -233,6 +233,8 @@ Cada una costó una discusión. El porqué está en el diseño.
 | **Mosquitto en VPS propio**, no Cloudflare ni la máquina de Jitsi | El VPS es nuestro y con root propio: coste marginal cero e independencia del proveedor externo |
 | **Llamadas 1 a 1** | Negocio retiró el multi-sede el 2026-07-31. Si ves `destinos: string[]` o `publicar-invitaciones` en el historial, **no es funcionalidad perdida** |
 | **La credencial MQTT viaja en la URL del kiosco** | Quien pueda leerla ya tiene acceso físico a ese tótem. Lo que protegen las ACLs —que una sede no falsifique la presencia de otra— se mantiene intacto. Caddy no puede inyectarla: la autenticación MQTT va en el paquete CONNECT, dentro del WebSocket |
+| **Se llama desde la tarjeta, en reposo** *(2026-08-10)* | La pantalla de selección se retiró entera. Mostraba las mismas tarjetas que ya se veían en reposo y convertía una llamada en tres toques, cuando el sistema al que sustituye la hace en uno. Si ves `seleccionando`, `toque-pantalla` o `timeout-seleccion` en el historial, **no es funcionalidad perdida**. El botón vive dentro de la tarjeta y no en toda ella: el panel está en una pared por la que pasa gente |
+| **Marca Victoria Crea** *(2026-08-10)* | Negro `#171717` y lima `#daf230`, tomados de `victoriacrea.com`. El verde de "Disponible" **no** se cambió al lima: juntos se confunden, y el semáforo de las tarjetas tiene que leerse desde el otro lado de la oficina |
 | **Nada de CDN en tiempo de ejecución** | `external_api.js` se autoaloja. El arranque del tótem no puede depender de que responda el dominio del tercero |
 
 ---

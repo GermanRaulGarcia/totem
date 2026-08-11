@@ -266,13 +266,36 @@ El defecto del `toggleAudio` existe precisamente **porque no hay estado**. `togg
 
 ### 5.2 Estados y transiciones
 
+> ### Cambio del 2026-08-10: se retira la pantalla de selección
+>
+> El diseño original intercalaba un estado `seleccionando` entre reposo y la
+> llamada: se tocaba la pantalla, se abría un selector con las mismas tarjetas de
+> sede que ya se estaban viendo, se elegía una y se pulsaba Llamar. **Tres toques
+> para una llamada, cuando el sistema al que sustituye la hace en uno.**
+>
+> La pantalla de reposo ya es un selector: muestra todas las sedes con su estado
+> en vivo. Una segunda pantalla para elegir entre esas mismas tarjetas no añadía
+> información ni protección, solo pasos. Ahora **se llama desde la propia
+> tarjeta**, con un botón que solo se pinta para las sedes llamables.
+>
+> Se han eliminado, no desactivado: el estado `seleccionando`, los eventos
+> `toque-pantalla` y `timeout-seleccion`, el temporizador de 30 s y su pantalla.
+>
+> **Lo que NO cambió:** elegir a qué sede se llama, y que una sede offline u
+> ocupada no sea llamable. Lo retirado es la pantalla intermedia, no la decisión.
+>
+> **La regla que sí se sustituye:** *"una invitación entrante expulsa al
+> selector"* ya no significa nada, porque no hay selector. En su lugar hay una
+> carrera más estrecha —llamar y recibir salen ambos de `inactivo`— y la resuelve
+> el orden de llegada: quien llega primero gana, y el segundo evento se ignora
+> sin efectos.
+
 ```
 arrancando ─┬─► inactivo ◄───────────────────────┐
             └─► sin-conexión                     │
                                                  │
-inactivo ──toque──► seleccionando ──confirma──► llamando
-   ▲                     │                       │
-   └──── timeout 30s ────┘                       │
+inactivo ──Llamar en la tarjeta de una sede──► llamando
+                                                 │
                                      ┌─el destino acepta─┐
 inactivo ─invitación─► recibiendo ───┴───acepta────► en-llamada ──► finalizando ──► inactivo
    ▲                        │
@@ -284,8 +307,7 @@ Una llamada tiene **como mucho dos sedes** (revisión del 2026-07-31). El contex
 | Estado | Entrada | Salida |
 |---|---|---|
 | `arrancando` | Carga config y conecta al broker | A `inactivo` o a `sin-conexión` |
-| `inactivo` | Modo atractor | Toque, o invitación entrante |
-| `seleccionando` | Selector de sedes: **una sola**, y elegir otra sustituye a la anterior | Confirmar, cancelar, o 30 s de inactividad |
+| `inactivo` | Modo atractor **y selector**: una tarjeta por sede, con botón Llamar en las llamables | Tocar Llamar, o invitación entrante |
 | `llamando` | Publica **la** invitación (una, al único destino). **No crea todavía el iframe** | Que el destino acepte, rechace o no conteste; cancelación; o 45 s |
 | `recibiendo` | Timbre y pantalla de llamada entrante | Aceptar, rechazar, o 45 s |
 | `en-llamada` | **Crea el iframe de Jitsi** | Colgar, o que cuelgue el par |
@@ -303,7 +325,7 @@ Solo el **destino de esta llamada** puede contestarla: una `acepta` de otra sede
    Esto aplica **también a quien llama**: durante `llamando` no se carga Jitsi. El llamante entra a la sala al mismo tiempo que el primero que acepta, en la transición a `en-llamada`. Además de mantener el invariante, evita levantar una sesión de Jitsi para una llamada que nadie va a contestar.
 2. **`sin-conexión` es transversal, con una excepción deliberada.** Se entra desde cualquier estado y se sale **siempre a `inactivo`**. Nunca una pantalla negra sin explicación.
 
-   *Corregido el 2026-07-31.* Este documento decía "se sale al estado seguro", y el contexto llegó a llevar un campo `estadoSeguro` para ello — pero nunca lo leyó nadie: `broker-conectado` siempre ha llamado a `irAInactivo`. El campo se ha eliminado y la regla se redacta como lo que el código hace de verdad. **Volver a `inactivo` es además lo correcto**, no una simplificación: los únicos estados que sobreviven a una caída del broker son `en-llamada` y `finalizando`, así que cuando se pasa por `sin-conexión` el "estado seguro" que se restauraría sería `seleccionando`, `llamando` o `recibiendo` — un selector abierto de hace un minuto, o un timbre de una llamada que el otro lado ya dio por perdida. Reposo es la única salida honesta.
+   *Corregido el 2026-07-31.* Este documento decía "se sale al estado seguro", y el contexto llegó a llevar un campo `estadoSeguro` para ello — pero nunca lo leyó nadie: `broker-conectado` siempre ha llamado a `irAInactivo`. El campo se ha eliminado y la regla se redacta como lo que el código hace de verdad. **Volver a `inactivo` es además lo correcto**, no una simplificación: los únicos estados que sobreviven a una caída del broker son `en-llamada` y `finalizando`, así que cuando se pasa por `sin-conexión` el "estado seguro" que se restauraría sería `llamando` o `recibiendo` — un ringback o un timbre de una llamada que el otro lado ya dio por perdida. Reposo es la única salida honesta. *(Antes del 2026-08-10 la lista incluía también `seleccionando`, un selector abierto de hace un minuto.)*
 
    **La excepción: `en-llamada` y `finalizando` no ceden ante una caída del broker.** Es la consecuencia directa del desacoplamiento de §3.2 — el vídeo viaja por Jitsi, así que una caída de MQTT no tiene por qué cortar la conversación. Si la máquina saliera de `en-llamada`, además de cortar la llamada sin motivo dejaría el iframe huérfano, porque `destruir-jitsi` solo se emite al salir de `en-llamada` por la vía normal. Se pierde la presencia y nada más.
 3. **Una invitación durante `en-llamada` no provoca cambio de estado.** Se ignora. Antes del 2026-07-31 era un aviso ("Canarias quiere unirse") porque la tercera sede podía incorporarse; ahora sencillamente no hay a dónde incorporarse. Lo que la regla protege sigue siendo lo mismo y sigue siendo lo importante: **una llamada entrante no puede tumbar una conversación en curso**, que es exactamente lo que hace el sistema antiguo.
@@ -314,7 +336,7 @@ Solo el **destino de esta llamada** puede contestarla: una `acepta` de otra sede
 
 | Temporizador | Valor |
 |---|---|
-| Inactividad en `seleccionando` | 30 s |
+| ~~Inactividad en `seleccionando`~~ | *Retirado el 2026-08-10 con la pantalla de selección* |
 | Sin respuesta (entrante y saliente) | 45 s |
 | Timeout de `videoConferenceJoined` | 15 s |
 | Recarga preventiva en reposo | 6 h |
@@ -328,8 +350,8 @@ Solo el **destino de esta llamada** puede contestarla: una `acepta` de otra sede
 
 | Pantalla | Contenido |
 |---|---|
-| **Reposo** | Fondo oscuro, reloj grande, logo discreto, y una tarjeta por sede con estado en vivo: verde libre, ámbar en llamada, gris sin conexión. "Toca para llamar" |
-| **Selección** | Tarjetas grandes, **una sola elegida a la vez**: tocar otra sustituye a la anterior. Las sedes offline **y las ocupadas** aparecen apagadas y no son pulsables: nunca se lanza una llamada al vacío ni a quien ya está hablando |
+| **Reposo** | Fondo negro de marca, reloj grande, logotipo discreto, y una tarjeta por sede con estado en vivo: verde libre, ámbar en llamada, gris sin conexión. **Las sedes llamables llevan un botón Llamar**; las offline y las ocupadas no, así que nunca se lanza una llamada al vacío ni a quien ya está hablando |
+| ~~**Selección**~~ | *Retirada el 2026-08-10. La de reposo ya era un selector; ver el aviso del §5.2* |
 | **Llamando** | La sede a la que se llama, *Sonando…*, ringback audible y cancelar siempre disponible |
 | **Recibiendo** | Quién llama, pulso animado, Aceptar en verde grande y Rechazar. Timbre **en bucle con volumen creciente** |
 | **En llamada** | Vídeo a pantalla completa, `TOOLBAR_BUTTONS` vacío. Barra propia con micro, cámara y colgar. Se autooculta y reaparece al tocar |
