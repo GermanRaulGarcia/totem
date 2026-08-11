@@ -20,10 +20,12 @@ import { WebSocketServer, createWebSocketStream } from 'ws';
 const PUERTO_TCP = Number(process.env.PUERTO_TCP ?? 1883);
 const PUERTO_WS = Number(process.env.PUERTO_WS ?? 9001);
 
+// `zona` es IANA y no un desfase en horas: asi el cambio de hora lo resuelve el
+// navegador. Canarias va una hora por detras de la peninsula todo el año.
 const SEDES = [
-    { id: 'lorca', nombre: 'Lorca', orden: 1 },
-    { id: 'canarias', nombre: 'Gran Canaria', orden: 2 },
-    { id: 'murcia', nombre: 'Murcia', orden: 3 }
+    { id: 'lorca', nombre: 'Lorca', orden: 1, zona: 'Europe/Madrid' },
+    { id: 'canarias', nombre: 'Gran Canaria', orden: 2, zona: 'Atlantic/Canary' },
+    { id: 'murcia', nombre: 'Murcia', orden: 3, zona: 'Europe/Madrid' }
 ];
 
 const aedes = await Aedes.createBroker();

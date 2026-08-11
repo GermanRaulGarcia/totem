@@ -134,12 +134,25 @@ docker compose exec mosquitto mosquitto_pub -h localhost \
     -t config/sedes -r -q 1 -m "{
       \"ts\": \"$(date -u +%FT%TZ)\",
       \"sedes\": [
-        {\"id\":\"lorca\",\"nombre\":\"Lorca\",\"orden\":1},
-        {\"id\":\"canarias\",\"nombre\":\"Gran Canaria\",\"orden\":2},
-        {\"id\":\"murcia\",\"nombre\":\"Murcia\",\"orden\":3}
+        {\"id\":\"lorca\",\"nombre\":\"Lorca\",\"orden\":1,\"zona\":\"Europe/Madrid\"},
+        {\"id\":\"canarias\",\"nombre\":\"Gran Canaria\",\"orden\":2,\"zona\":\"Atlantic/Canary\"},
+        {\"id\":\"murcia\",\"nombre\":\"Murcia\",\"orden\":3,\"zona\":\"Europe/Madrid\"}
       ]
     }"
 ```
+
+**`zona` es la zona horaria IANA de la sede.** Con ella, la tarjeta de una sede
+que va en otra hora la muestra en pantalla — Canarias va una hora por detrás de
+la península, y llamar a las 9:00 desde Lorca es llamar a las 8:00 allí. Solo se
+pinta cuando difiere de la hora del propio tótem; si coincide, no aparece.
+
+Va en IANA (`Atlantic/Canary`) y no como un desfase en horas para que el cambio
+de hora lo resuelva el navegador: con un `-1` escrito a mano habría que revisarlo
+dos veces al año en un kiosco que nadie mira.
+
+Es **opcional**: una sede sin `zona` simplemente no muestra hora. Y una `zona` mal
+escrita tampoco rompe nada —se ignora—, pero repásala: `config/sedes` es un
+mensaje retenido, así que una errata llega a los tres tótems y se queda.
 
 ## Comprobar la presencia en vivo
 

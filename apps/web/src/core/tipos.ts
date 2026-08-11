@@ -4,6 +4,15 @@ export interface Sede {
     id: string;
     nombre: string;
     orden: number;
+    /**
+     * Zona horaria IANA, p. ej. `Atlantic/Canary` o `Europe/Madrid`.
+     *
+     * Va en `config/sedes` y no en el codigo por la misma razon que el resto del
+     * directorio (§9.2): instalar una sede no puede obligar a tocar las demas.
+     * Y en IANA, no en horas de diferencia, para que el cambio de hora lo
+     * resuelva el navegador en vez de nosotros.
+     */
+    zona?: string;
 }
 
 export interface EstadoSede {
@@ -13,6 +22,12 @@ export interface EstadoSede {
     disponibilidad: Disponibilidad;
     callId: string | null;
     ts: string;
+    /**
+     * Zona horaria, tomada del directorio y NO del mensaje de presencia: cada
+     * totem publica su estado, pero no tiene por que saber en que zona esta.
+     * `Totem.sedes()` la adjunta al fusionar directorio y presencia.
+     */
+    zona?: string;
 }
 
 /**

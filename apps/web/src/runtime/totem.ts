@@ -67,15 +67,34 @@ export class Totem {
                 disponibilidad: 'libre', callId: null, ts: ''
             });
         }
+        // La presencia PISA al directorio, pero la zona horaria no viaja en ella:
+        // cada totem publica su estado y no tiene por que saber en que zona esta.
+        // Vive solo en `config/sedes`, asi que hay que readjuntarla o una sede se
+        // quedaria sin hora justo cuando esta encendida, que es cuando importa.
+        const zonas = new Map(this.directorio.map(s => [s.id, s.zona]));
         for (const [id, estado] of this.presencia) {
             if (id === this.op.sede) continue;
-            porId.set(id, estado);
+            const zona = zonas.get(id);
+            porId.set(id, zona === undefined ? estado : { ...estado, zona });
         }
         const orden = new Map(this.directorio.map(s => [s.id, s.orden]));
         const posicion = (id: string) => orden.get(id) ?? Number.MAX_SAFE_INTEGER;
         return [...porId.values()].sort(
             (a, b) => posicion(a.sede) - posicion(b.sede) || a.sede.localeCompare(b.sede)
         );
+    }
+
+    /**
+     * La zona horaria de ESTE totem, segun el directorio.
+     *
+     * Se toma de `config/sedes` y no del reloj del sistema a proposito: que el
+     * Windows de cada sede tenga bien su zona horaria es una suposicion, y de las
+     * que fallan en silencio. Con el directorio como fuente, la hora que se pinta
+     * es la que operaciones ha declarado para esa oficina, y no depende de que
+     * nadie configurara bien la maquina hace dos años.
+     */
+    zonaPropia(): string | undefined {
+        return this.directorio.find(s => s.id === this.op.sede)?.zona;
     }
 
     emitir(evento: Evento): void {

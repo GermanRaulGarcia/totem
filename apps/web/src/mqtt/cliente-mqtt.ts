@@ -86,7 +86,10 @@ function leerDirectorio(datos: unknown): Sede[] | null {
             nombre: cadena(bruto.nombre) ? bruto.nombre : bruto.id,
             orden: typeof bruto.orden === 'number' && Number.isFinite(bruto.orden)
                 ? bruto.orden
-                : Number.MAX_SAFE_INTEGER
+                : Number.MAX_SAFE_INTEGER,
+            // No se valida que la zona exista: eso lo decide Intl, y `horaEn` ya
+            // devuelve null si no vale. Aqui solo se comprueba que sea una cadena.
+            ...(cadena(bruto.zona) ? { zona: bruto.zona } : {})
         });
     }
     return sedes;
