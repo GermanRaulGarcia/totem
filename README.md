@@ -81,7 +81,7 @@ Chrome en modo kiosco, en cada PC, con la credencial MQTT **propia de esa sede**
 
 ```
 chrome.exe --kiosk ^
-  "https://totem.sunube.net/?sede=lorca&nombre=Lorca&usuario=totem-lorca&contrasena=CONTRASENA_LORCA" ^
+  "https://interfono.kordino.com/?sede=lorca&nombre=Lorca&usuario=totem-lorca&contrasena=CONTRASENA_LORCA" ^
   --autoplay-policy=no-user-gesture-required ^
   --no-first-run ^
   --disable-session-crashed-bubble
@@ -147,7 +147,7 @@ sistema no viven dentro de un módulo, viven entre dos.
 | `docs/ESTADO.md` | **Empieza aquí.** Estado, siguientes pasos, fallos conocidos y decisiones cerradas |
 | `docs/superpowers/specs/2026-07-30-totem-redesign-design.md` | El diseño: decisiones, contrato MQTT, FSM, seguridad, fases |
 | `docs/superpowers/plans/2026-07-30-totem-fases-1-4.md` | Plan de implementación de las fases 1 a 4 |
-| `infra/README.md` | Despliegue del VPS: Mosquitto, Caddy, credenciales y directorio de sedes |
+| `infra/README.md` | Despliegue del VPS: Mosquitto, el `VirtualHost` de Apache, credenciales y directorio de sedes |
 | `infra/mosquitto/acl` | Qué puede publicar y leer cada sede |
 
 `info.md` contiene credenciales y **no se versiona** (ver `.gitignore`).

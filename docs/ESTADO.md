@@ -232,7 +232,7 @@ Cada una costó una discusión. El porqué está en el diseño.
 | **Se mantienen los PCs con Windows** | El fallo era de software. Raspberry Pi o app Android nativa solo trasladan el cuelgue a otra máquina |
 | **Mosquitto en VPS propio**, no Cloudflare ni la máquina de Jitsi | El VPS es nuestro y con root propio: coste marginal cero e independencia del proveedor externo |
 | **Llamadas 1 a 1** | Negocio retiró el multi-sede el 2026-07-31. Si ves `destinos: string[]` o `publicar-invitaciones` en el historial, **no es funcionalidad perdida** |
-| **La credencial MQTT viaja en la URL del kiosco** | Quien pueda leerla ya tiene acceso físico a ese tótem. Lo que protegen las ACLs —que una sede no falsifique la presencia de otra— se mantiene intacto. Caddy no puede inyectarla: la autenticación MQTT va en el paquete CONNECT, dentro del WebSocket |
+| **La credencial MQTT viaja en la URL del kiosco** | Quien pueda leerla ya tiene acceso físico a ese tótem. Lo que protegen las ACLs —que una sede no falsifique la presencia de otra— se mantiene intacto. El servidor web no puede inyectarla: la autenticación MQTT va en el paquete CONNECT, dentro del WebSocket |
 | **Se llama desde la tarjeta, en reposo** *(2026-08-10)* | La pantalla de selección se retiró entera. Mostraba las mismas tarjetas que ya se veían en reposo y convertía una llamada en tres toques, cuando el sistema al que sustituye la hace en uno. Si ves `seleccionando`, `toque-pantalla` o `timeout-seleccion` en el historial, **no es funcionalidad perdida**. El botón vive dentro de la tarjeta y no en toda ella: el panel está en una pared por la que pasa gente |
 | **Marca Victoria Crea** *(2026-08-10)* | Negro `#171717` y lima `#daf230`, tomados de `victoriacrea.com`. El verde de "Disponible" **no** se cambió al lima: juntos se confunden, y el semáforo de las tarjetas tiene que leerse desde el otro lado de la oficina |
 | **Nada de CDN en tiempo de ejecución** | `external_api.js` se autoaloja. El arranque del tótem no puede depender de que responda el dominio del tercero |
@@ -271,7 +271,7 @@ código. Todas están así a propósito.
 | Qué | Dónde está | Para qué lo necesitas |
 |---|---|---|
 | `info.md` | Fuera del repo, gitignorado | IDs y contraseñas de AnyDesk para entrar en los PCs de las sedes |
-| Credenciales del VPS | Fuera del repo | Desplegar Mosquitto y Caddy |
+| Credenciales del VPS | Fuera del repo | Desplegar Mosquitto y el `VirtualHost` de Apache |
 | `infra/mosquitto/passwd` | Se genera en el VPS, nunca se versiona | Autenticación MQTT por sede |
 | `external_api.js` | Se descarga en el despliegue | Ver `infra/README.md` |
 
@@ -284,14 +284,19 @@ prudente es rotarlas.
 
 ## Antes de desplegar el rediseño
 
-- [ ] Desplegar primero el parche de fase 0 en las tres máquinas
-- [ ] Rotar las contraseñas de AnyDesk
-- [ ] Generar una credencial MQTT **por sede** en el VPS, nunca compartida
-- [ ] Sustituir el dominio de ejemplo en `infra/Caddyfile`
-- [ ] Aprovisionar `external_api.js` autoalojado
-- [ ] Publicar el directorio de sedes con `-r` (retenido) — sin ese flag, un tótem
-      que arranque después no se entera de qué sedes existen
-- [ ] Pedir al proveedor la autenticación JWT
+- [x] Desplegar el parche de fase 0 — hecho, y la sala `"a"` cerrada
+- [ ] Rotar las contraseñas de AnyDesk e Iperius
+- [x] `interfono.kordino.com` en el VPS propio: Apache, TLS y Mosquitto en
+      `127.0.0.1` — ver `infra/README.md`
+- [x] Una credencial MQTT **por sede**, nunca compartida
+- [x] `external_api.js` autoalojado
+- [x] Directorio de sedes publicado con `-r`, y con la zona horaria de cada una
+- [ ] **Escribir el emisor de tokens JWT.** Trabajo nuevo del 2026-08-04: no
+      estaba en el plan y es prerrequisito del corte
+- [ ] Activar JWT en Jitsi, **el mismo día** que el corte: con `ENABLE_GUESTS=0`,
+      el sistema antiguo deja de poder entrar en la sala
+- [ ] Decidir si Jitsi pasa también al VPS propio. Si sí, desaparece la última
+      dependencia externa del proyecto
 - [ ] Ejecutar la prueba de resistencia de 72 h
 
 ---

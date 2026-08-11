@@ -1,13 +1,55 @@
 # Infraestructura del tótem
 
-## Primer despliegue
+> ### Cambio del 2026-08-11: Caddy fuera, Apache de puerta
+>
+> El diseño original levantaba **Caddy** en el 80 y el 443. En el VPS real esos
+> puertos los tiene **Apache 2.4.58 con varias webs en producción**, así que
+> disputárselos era tumbar el servicio. Se intentó y falló con
+> `address already in use` — Apache ni se inmutó, pero el contenedor no arrancaba.
+>
+> El `Caddyfile` se ha **borrado**, no desactivado: describía un despliegue
+> imposible en la única máquina donde esto va a correr, y una receta que no
+> funciona cuesta más que ninguna.
+>
+> **Ahora Apache sirve la SPA y traduce el WebSocket, y Mosquitto escucha solo en
+> `127.0.0.1`.** Efecto secundario bueno: el broker no está expuesto a internet;
+> solo se llega a él atravesando Apache por TLS.
+>
+> El `VirtualHost` está en [`apache/app-interfono.conf`](apache/app-interfono.conf),
+> comentado a fondo. Léelo antes de tocarlo: los dos `VirtualHost` tienen
+> `DocumentRoot` **distinto** a propósito, y hay al menos tres decisiones ahí que
+> parecen arbitrarias y no lo son.
 
-1. Sustituir el dominio de ejemplo en `infra/Caddyfile`
-   (`totem.sunube.net`) por el dominio real del VPS. Si se deja el
-   placeholder, el HTTPS automático de Caddy falla al pedir el
-   certificado: el proveedor de ACME rechaza un dominio que no controlas.
+## Despliegue en producción
 
-2. Generar las contraseñas de cada sede.
+**Dominio:** `interfono.kordino.com` · **Registro A** en Dinahosting apuntando a
+la IP del VPS. Sin `AAAA`: si existe un IPv6 que no responde, Let's Encrypt lo
+intenta **primero** y la emisión falla con un error que no apunta a la causa.
+
+**Estructura en el VPS**, siguiendo la nomenclatura existente (`app_<nombre>`):
+
+| Ruta | Qué es |
+|---|---|
+| `/var/www/app_interfono/` | El repositorio. **No servido** |
+| `/var/www/app_interfono/apps/web/dist/` | El `DocumentRoot` del :443. Solo lo compilado |
+
+Que el `DocumentRoot` sea el `dist` y no la raíz **no es estética**: Apache sirve
+los ficheros que existen, y `FallbackResource` solo actúa sobre los que no. Con la
+raíz servida, `infra/mosquitto/passwd` y `.git/` quedarían descargables.
+
+### Reglas para tocar Apache en esa máquina
+
+Hay webs en producción detrás. No son sugerencias:
+
+- **Fichero propio, jamás editar los `VirtualHost` existentes.** La vuelta atrás
+  es `a2dissite app-interfono` y recargar.
+- **`apache2ctl configtest` antes de cada recarga.**
+- **`systemctl reload`, nunca `restart`.** El *reload* mantiene la configuración
+  anterior si la nueva falla; un *restart* con un error tumba todos los sitios.
+
+### Pasos
+
+1. Generar las contraseñas de cada sede.
 
    **Una credencial por sede, nunca compartida.** Es lo que hace que las ACLs
    sirvan de algo: cada usuario solo puede publicar su propio estado, así que
@@ -41,11 +83,37 @@ EOF
 
 `mosquitto/passwd` NO se versiona; ya está en `.gitignore`.
 
-3. Descargar `external_api.js` para autoalojarlo:
+⚠️ **Comprueba después de CADA usuario que ha entrado de verdad:**
 
 ```bash
-mkdir -p vendor
-curl -fSL -o vendor/external_api.js https://meet.sunube.net/external_api.js
+cut -d: -f1 mosquitto/passwd
+```
+
+Si las dos confirmaciones de la contraseña no coinciden, `mosquitto_passwd`
+**aborta en silencio** y no escribe nada. Pasó en el primer despliegue: de cuatro
+usuarios solo se guardaron dos, y el síntoma fue `not authorised` en un tótem cuyo
+usuario sencillamente no existía.
+
+Y **`mosquitto_passwd` reescribe el fichero**, así que vuelve a ser de root y
+pierde los permisos. Hay que rehacerlos **cada vez** que se toca una credencial, o
+Mosquitto no arranca:
+
+```bash
+chown 1883:1883 mosquitto/passwd mosquitto/acl
+chmod 600 mosquitto/passwd
+chmod 0700 mosquitto/acl
+```
+
+💡 **Que las contraseñas lleven solo letras y números.** Viajan en la URL del
+kiosco, y ahí `&` corta el parámetro, `#` manda el resto a un fragmento que no se
+envía, `+` se decodifica como espacio y `%` se interpreta como escape.
+`openssl rand -hex 24` da algo imposible de romper en una URL.
+
+2. Descargar `external_api.js` para autoalojarlo, **dentro de la web**:
+
+```bash
+mkdir -p apps/web/public/vendor
+curl -fSL -o apps/web/public/vendor/external_api.js https://meet.sunube.net/external_api.js
 ```
 
 ⚠️ **El `-f` no es opcional.** Sin él, `curl` guarda el cuerpo de un error HTTP
@@ -60,20 +128,43 @@ desde fuera de las oficinas** (la raíz del dominio también). Si te pasa al
 aprovisionar el VPS, pregunta al administrador de Jitsi antes de dar el paso por
 bueno.
 
-4. Construir la web y levantar:
+3. Construir la web y levantar el broker:
 
 ```bash
-cd ../apps/web && npm ci && npm run build
+cd apps/web && npm ci && npm run build
 cd ../../infra && docker compose up -d
 ```
 
-5. Lanzar cada tótem con **su propia** credencial. El usuario y la contraseña
-   viajan como parámetros de la URL de arranque, junto a `?sede=`; sin ellos
-   Mosquitto responde CONNACK 5 (`allow_anonymous false`) y el tótem no conecta.
+Comprueba que el broker **no está expuesto**. Debe decir `127.0.0.1:9001`; si
+dice `0.0.0.0:9001`, está abierto a internet:
+
+```bash
+ss -ltnp | grep 9001
+```
+
+4. Colocar `apache/app-interfono.conf` en `/etc/apache2/sites-available/`,
+   `a2ensite app-interfono`, `apache2ctl configtest` y `systemctl reload apache2`.
+
+   El certificado se emite **antes** de activar el bloque `:443`, y con
+   `certonly --webroot`, no con `--apache`: en una máquina con webs en producción
+   no interesa que certbot edite configuración que no hemos escrito nosotros.
+
+```bash
+certbot certonly --webroot -w /var/www/app_interfono -d interfono.kordino.com
+```
+
+⚠️ Ese `-w` queda grabado en `/etc/letsencrypt/renewal/`. **Si luego se mueve o
+renombra esa carpeta, la renovación falla** — dentro de 60 días, de madrugada y
+sin avisar, hasta que los tótems dejen de conectar por certificado caducado.
+
+5. Publicar el directorio de sedes (ver más abajo) y lanzar cada tótem con **su
+   propia** credencial. El usuario y la contraseña viajan como parámetros de la URL
+   de arranque, junto a `?sede=`; sin ellos Mosquitto responde CONNACK 5
+   (`allow_anonymous false`) y el tótem no conecta.
 
 ```
 chrome.exe --kiosk ^
-  "https://totem.sunube.net/?sede=lorca&nombre=Lorca&usuario=totem-lorca&contrasena=CONTRASENA_LORCA" ^
+  "https://interfono.kordino.com/?sede=lorca&nombre=Lorca&usuario=totem-lorca&contrasena=CONTRASENA_LORCA" ^
   --autoplay-policy=no-user-gesture-required ^
   --no-first-run ^
   --disable-session-crashed-bubble
