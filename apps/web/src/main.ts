@@ -28,6 +28,15 @@ const HOST_JITSI = params.get('jitsi') ?? 'meet.sunube.net';
 const USUARIO = params.get('usuario') ?? undefined;
 const CONTRASENA = params.get('contrasena') ?? undefined;
 
+// Interruptor por maquina para la miniatura propia: `?autovista=no` la apaga.
+//
+// Existe porque abrir la camara dos veces depende del hardware: hay webcams y
+// drivers de Windows que no lo admiten, y ahi la miniatura le roba el video a la
+// llamada. Con esto se apaga en el totem afectado sin recompilar ni tocar a los
+// demas, que es lo que hace falta cuando el problema aparece un martes por la
+// manaña con gente esperando para hablar.
+const CON_AUTOVISTA = params.get('autovista') !== 'no';
+
 const raiz = document.getElementById('app')!;
 
 const timers: Temporizadores = (() => {
@@ -139,11 +148,16 @@ function pintar(): void {
         brokerConectado: totem.conectado
     });
 
-    // Mismo ciclo de vida que el iframe: la camara propia se abre al entrar en
-    // llamada y se cierra al salir. Las dos operaciones son idempotentes, que es
-    // lo que permite llamarlas desde cada repintado -uno por segundo, por el
-    // reloj- sin pedir la camara una y otra vez.
-    if (totem.contexto.estado === 'en-llamada') {
+    // La camara propia se abre solo cuando Jitsi YA esta dentro de la llamada, no
+    // al entrar en `en-llamada`. Abrirlas a la vez costo una incidencia en
+    // produccion: en una camara que no admite dos aperturas gana el primero, y
+    // Lorca se paso una manaña enviando audio sin video mientras su miniatura se
+    // veia perfecta. Jitsi coge la camara primero SIEMPRE; si luego la miniatura
+    // no puede, se queda negra y la llamada sigue.
+    //
+    // Las dos operaciones son idempotentes, que es lo que permite llamarlas desde
+    // cada repintado -uno por segundo, por el reloj- sin pedir la camara en bucle.
+    if (totem.contexto.estado === 'en-llamada' && jitsi.unido && CON_AUTOVISTA) {
         void autovista.mostrar(raiz.querySelector<HTMLVideoElement>('#autovista'));
     } else {
         autovista.ocultar();

@@ -34,6 +34,21 @@ export class SesionJitsi {
     private microSilenciado = false;
     private camaraApagada = false;
 
+    /**
+     * Jitsi ya esta DENTRO de la llamada, no solo creado.
+     *
+     * Lo necesita `AutoVista`: la miniatura propia abre la camara por su cuenta, y
+     * si lo hace a la vez que Jitsi, en una camara que no admite dos aperturas
+     * gana el primero. Paso en produccion el 2026-08-11 -Lorca enviaba audio pero
+     * NO video, y la miniatura se veia perfecta-: nuestra miniatura se habia
+     * quedado la camara y Jitsi no tenia nada que mandar.
+     *
+     * Esperando a este flag, Jitsi coge la camara primero SIEMPRE. Si luego la
+     * miniatura no puede abrirla, se queda negra y la llamada sigue: es el orden
+     * de prioridades correcto.
+     */
+    private jitsiUnido = false;
+
     constructor(
         private readonly fabrica: FabricaJitsi,
         private readonly buscarContenedor: BuscadorContenedor,
@@ -46,6 +61,7 @@ export class SesionJitsi {
 
     get silenciado(): boolean { return this.microSilenciado; }
     get camaraOculta(): boolean { return this.camaraApagada; }
+    get unido(): boolean { return this.jitsiUnido; }
 
     alFallar(cb: () => void): void { this.cbFallo = cb; }
     alUnirse(cb: () => void): void { this.cbUnido = cb; }
@@ -86,6 +102,7 @@ export class SesionJitsi {
         this.api = nuevaApi;
         this.microSilenciado = false;
         this.camaraApagada = false;
+        this.jitsiUnido = false;
 
         // Guardia de identidad: solo dispara el callback si esta api sigue siendo la actual.
         // Esto previene que un listener stale de una sesion anterior (o que se está destruyendo)
@@ -94,7 +111,9 @@ export class SesionJitsi {
             if (this.api === nuevaApi) this.cbFallo();
         });
         nuevaApi.addEventListener('videoConferenceJoined', () => {
-            if (this.api === nuevaApi) this.cbUnido();
+            if (this.api !== nuevaApi) return;
+            this.jitsiUnido = true;
+            this.cbUnido();
         });
         nuevaApi.addEventListener('audioMuteStatusChanged', datos => {
             if (this.api !== nuevaApi) return;
@@ -138,6 +157,7 @@ export class SesionJitsi {
         // como stale y no lo convierte en un fallo de una llamada que ya no existe.
         const api = this.api;
         this.api = null;
+        this.jitsiUnido = false;
         api.dispose();
     }
 }

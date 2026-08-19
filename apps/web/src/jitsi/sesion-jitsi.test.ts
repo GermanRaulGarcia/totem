@@ -38,6 +38,53 @@ describe('SesionJitsi', () => {
         expect(s.activa).toBe(true);
     });
 
+    describe('unido: la senal que deja pasar a la miniatura propia', () => {
+        // Existe por una incidencia en produccion: la miniatura abria la camara a
+        // la vez que Jitsi, y en una camara que no admite dos aperturas gana el
+        // primero. Lorca envio audio sin video durante una manaña, con su
+        // miniatura viendose perfecta. Esperando a esta senal, Jitsi coge la
+        // camara primero SIEMPRE.
+        it('crear todavia NO cuenta como unido', () => {
+            const { api } = dobleApi();
+            const s = new SesionJitsi(() => api, contenedor, 'Lorca');
+            s.crear('spm-1');
+            expect(s.unido).toBe(false);
+        });
+
+        it('lo es cuando Jitsi confirma que ha entrado', () => {
+            const { api, invocarListener } = dobleApi();
+            const s = new SesionJitsi(() => api, contenedor, 'Lorca');
+            s.crear('spm-1');
+            invocarListener('videoConferenceJoined');
+            expect(s.unido).toBe(true);
+        });
+
+        it('deja de serlo al destruir, para que la camara no siga abierta', () => {
+            const { api, invocarListener } = dobleApi();
+            const s = new SesionJitsi(() => api, contenedor, 'Lorca');
+            s.crear('spm-1');
+            invocarListener('videoConferenceJoined');
+
+            s.destruir();
+            expect(s.unido).toBe(false);
+        });
+
+        it('una sesion nueva empieza sin unir aunque la anterior lo estuviera', () => {
+            const primera = dobleApi();
+            const segunda = dobleApi();
+            let toca = primera;
+            const s = new SesionJitsi(() => toca.api, contenedor, 'Lorca');
+
+            s.crear('spm-1');
+            primera.invocarListener('videoConferenceJoined');
+            expect(s.unido).toBe(true);
+
+            toca = segunda;
+            s.crear('spm-2');
+            expect(s.unido).toBe(false);
+        });
+    });
+
     it('destruir llama a dispose y deja la sesion inactiva', () => {
         const { api } = dobleApi();
         const s = new SesionJitsi(() => api, contenedor, 'Lorca');
