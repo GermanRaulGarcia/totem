@@ -131,6 +131,16 @@ desarrollar el paso 2 sin tocar la que da servicio.
 
 ---
 
+## Antes de montar un tótem nuevo
+
+Léete **«Preparar la máquina de un tótem»** en `infra/README.md`. Son cinco puntos
+de configuración de Windows y Chrome, ninguno es código nuestro, y **todos
+costaron un rato al instalar Lorca y Gran Canaria** porque el síntoma no se
+parecía a la causa: micrófono que Windows da por bueno y Chrome ignora, timbre que
+suena mientras la voz sale por otro altavoz, dos kioscos arrancando a la vez.
+
+---
+
 ## Fallos conocidos
 
 Ninguno impide desplegar, pero están identificados y no deben redescubrirse.

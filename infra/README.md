@@ -185,6 +185,86 @@ protegen las ACLs —que una sede comprometida no falsifique la presencia de
 **otra**— no depende de dónde viva la credencial de esta. El razonamiento
 completo está en `apps/web/src/main.ts`.
 
+## Preparar la máquina de un tótem
+
+Lista salida de instalar Lorca y Gran Canaria. **Ninguno de estos puntos es
+software nuestro**, y todos costaron un rato porque el síntoma no se parece a la
+causa. Repásalos al montar cada máquina.
+
+### 1. Sonido de Windows: los DOS predeterminados
+
+Windows mantiene un dispositivo predeterminado **general** y otro **de
+comunicaciones**, y los mantiene por separado para salida y para entrada. Las
+llamadas usan el de comunicaciones; el resto de sonidos, el general.
+
+```
+Win+R → mmsys.cpl
+```
+
+En **Reproducción** y en **Grabar**, clic derecho sobre el aparato bueno y
+márcalo como predeterminado **y** como de comunicaciones. Debe quedar con los dos
+iconos verdes: el altavoz y el teléfono.
+
+> Si las opciones no aparecen en el menú, es que ese dispositivo ya tiene los dos
+> papeles. Windows las oculta cuando no hay nada que cambiar.
+
+**Síntoma cuando está mal:** se oye el timbre pero no la voz. El timbre lo genera
+la aplicación y sale por el general; la voz va por WebRTC y sale por el de
+comunicaciones.
+
+### 2. Chrome elige sus propios dispositivos
+
+⚠️ **Esta es la trampa que más cara sale, y es independiente de todo lo anterior.**
+
+Chrome tiene su **propia** selección de micrófono y cámara, y **no** sigue a la de
+Windows. En una máquina con dos micrófonos —la webcam suele traer uno, más el del
+panel o el de la barra de sonido— puede quedarse con el que no capta nada,
+mientras Windows y los permisos se ven perfectos.
+
+```
+chrome://settings/content/microphone
+chrome://settings/content/camera
+```
+
+Arriba de cada página hay un **desplegable** con el dispositivo que usa Chrome.
+Fíjalo en el bueno.
+
+**Síntoma cuando está mal:** la otra sede no te oye, mientras que en
+`mmsys.cpl` el micrófono correcto está seleccionado y con la barra de nivel
+moviéndose. Pasó en Gran Canaria el 2026-08-19 y llevó un rato largo justamente
+porque todo lo demás daba correcto.
+
+### 3. Permisos del sitio en Chrome
+
+```
+chrome://settings/content/siteDetails?site=https%3A%2F%2Finterfono.kordino.com
+```
+
+**Cámara** y **Micrófono** en *Permitir*. Son independientes: se puede tener una
+concedida y la otra no, y entonces sale vídeo sin audio.
+
+El sistema antiguo se lanzaba con `--use-fake-ui-for-media-stream`, que los
+concedía solos y sin preguntar. Se retiró a propósito (diseño §8.4): esa bandera
+se los da a **cualquier** página que se cargue, no solo a la nuestra. La solución
+definitiva son las políticas `AudioCaptureAllowedUrls` y `VideoCaptureAllowedUrls`
+acotadas a nuestro origen — pendiente, fase 5.
+
+### 4. Arranque automático
+
+Copia del acceso directo del kiosco en `shell:startup`, y **fuera el del sistema
+antiguo**: con los dos, la máquina levanta dos Chrome y la sede aparece duplicada
+en la sala.
+
+Requiere autologin (`netplwiz`): la carpeta Inicio se ejecuta al iniciar sesión,
+no al arrancar. Si la máquina se queda en la pantalla de bloqueo, no arranca nada.
+
+### 5. Si la cámara no admite dos aperturas
+
+La miniatura propia abre la cámara aparte del iframe de Jitsi. En hardware que no
+admite dos aperturas simultáneas, Jitsi espera su turno y todo va bien — pero si
+alguna máquina diera problemas de vídeo, se apaga la miniatura sin recompilar
+añadiendo `&autovista=no` a la URL del kiosco.
+
 ## Desarrollo local (sin Docker)
 
 Vite sirve los estáticos de `apps/web/public/` directamente, así que
